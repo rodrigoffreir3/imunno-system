@@ -61,20 +61,18 @@ services:
   # --- NOVOS SERVIÇOS PARA A CURADORIA DE DADOS ---
   # Bloco Corrigido com MariaDB
   wp-db:
-    image: mariadb:latest
+    image: postgres:15-alpine
     container_name: wordpress_db
     restart: always
     environment:
-      MARIADB_DATABASE: wordpress_db
-      MARIADB_USER: wordpress_user
-      MARIADB_PASSWORD: wordpress_password
-      MARIADB_ROOT_PASSWORD: changethisrootpassword
+      POSTGRES_USER: wordpress_user
+      POSTGRES_PASSWORD: wordpress_password
+      POSTGRES_DB: wordpress_db
     volumes:
-      - wordpress-db-data:/var/lib/mysql
+      - wordpress-db-data:/var/lib/postgresql/data
     healthcheck:
-      # ESTA É A VERSÃO CORRETA E PADRÃO DE MERCADO
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pchangethisrootpassword"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U wordpress_user -d wordpress_db"]
+      interval: 5s
       timeout: 5s
       retries: 5
 
