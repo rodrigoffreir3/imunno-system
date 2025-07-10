@@ -72,7 +72,7 @@ services:
     volumes:
       - wordpress-db-data:/var/lib/mysql
     healthcheck:
-      # --- ESTA É A PARTE CORRIGIDA E MAIS ROBUSTA ---
+      # ESTA É A VERSÃO CORRETA E PADRÃO DE MERCADO
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pchangethisrootpassword"]
       interval: 10s
       timeout: 5s
