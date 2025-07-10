@@ -1,0 +1,4 @@
+# Regras para o Imunno Agent - Monitorar execução de comandos
+# Audita a chamada de sistema 'execve' para arquiteturas 64-bit e 32-bit
+-a always,exit -F arch=b64 -S execve -k exec_rule
+-a always,exit -F arch=b32 -S execve -k exec_rule

@@ -1,0 +1,28 @@
+{
+	"folders": [
+		{
+			"path": "imunno-agent"
+		},
+		{
+			"path": "imunno-collector"
+		},
+		{
+			"path": "imunno-ml-service"
+		},
+		{
+			"path": "postgres-init"
+		},
+		{
+			"path": "quarantine_files"
+		},
+		{
+			"path": "test_files"
+		},
+		{
+			"path": ".ipynb_checkpoints"
+		},
+		{
+			"path": ".venv"
+		}
+	]
+}

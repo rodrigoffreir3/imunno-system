@@ -1,0 +1,64 @@
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    margin: 0;
+    padding: 20px;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    border-bottom: 2px solid #444;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+header h1 {
+    margin: 0;
+    flex-grow: 1;
+}
+
+.status-light {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: #ff4d4d; /* Começa vermelho (desconectado) */
+    box-shadow: 0 0 10px #ff4d4d;
+    transition: background-color 0.5s ease;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+}
+
+th, td {
+    border: 1px solid #444;
+    padding: 12px;
+    text-align: left;
+    vertical-align: top;
+}
+
+thead {
+    background-color: #2a2d2e;
+}
+
+tbody tr:nth-child(even) {
+    background-color: #2a2d2e;
+}
+
+/* Estilos para os níveis de ameaça */
+.threat-high {
+    background-color: rgba(255, 77, 77, 0.2) !important;
+    font-weight: bold;
+}
+
+.threat-medium {
+    background-color: rgba(255, 165, 0, 0.2) !important;
+}
+
+.threat-low {
+    /* Sem estilo extra, fundo padrão */
+}

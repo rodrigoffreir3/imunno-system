@@ -1,0 +1,24 @@
+# Arquivo: imunno-ml-service/Dockerfile (versão simplificada)
+
+# Começamos com uma imagem oficial do Python, versão 3.13 slim.
+FROM python:3.13-slim
+
+# Define o diretório de trabalho dentro do container.
+WORKDIR /app
+
+# Copia o arquivo de dependências para o container.
+COPY requirements.txt .
+
+# Instala as dependências que listamos.
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copia todo o resto do nosso código e arquivos (incluindo o .joblib) para o container.
+COPY . .
+
+# A linha redundante 'COPY immunno_model.joblib .' foi removida.
+
+# Expõe a porta 8000, que é a porta padrão do FastAPI/Uvicorn.
+EXPOSE 8000
+
+# O comando para iniciar nosso servidor web quando o container for executado.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

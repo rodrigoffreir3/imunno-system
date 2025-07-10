@@ -1,0 +1,99 @@
+# Arquivo docker-compose.yml - Versão com WordPress para Curadoria de Dados
+services:
+  # --- NOSSOS SERVIÇOS EXISTENTES ---
+  postgres:
+    image: postgres:15-alpine
+    container_name: imunno_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: imunno_user
+      POSTGRES_PASSWORD: imunno_password
+      POSTGRES_DB: imunno_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U imunno_user -d imunno_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  collector:
+    build: ./imunno-collector
+    container_name: imunno_collector
+    restart: always
+    ports:
+      - "8181:8080"
+    depends_on:
+      postgres: { condition: service_healthy }
+      ml-service: { condition: service_healthy }
+    env_file: .env
+
+  agent:
+    build: ./imunno-agent
+    container_name: imunno_agent
+    restart: always
+    depends_on:
+      collector: { condition: service_started }
+    cap_add:
+      - AUDIT_WRITE
+      - AUDIT_CONTROL
+    env_file: .env
+    volumes:
+      # IMPORTANTE: Agora o agente vigia a pasta do WordPress
+      - wordpress-files:/data
+      - ./quarantine_files:/app/quarantine
+
+  ml-service:
+    build: ./imunno-ml-service
+    container_name: imunno_ml_service
+    restart: always
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- NOSSOS NOVOS SERVIÇOS PARA A CURADORIA DE DADOS ---
+  wp-db:
+    image: postgres:15-alpine
+    container_name: wordpress_db
+    restart: always
+    environment:
+      POSTGRES_USER: wordpress_user
+      POSTGRES_PASSWORD: wordpress_password
+      POSTGRES_DB: wordpress_db
+    volumes:
+      - wordpress-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wordpress_user -d wordpress_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  wordpress:
+    image: wordpress:latest
+    container_name: wordpress_site
+    restart: always
+    ports:
+      # Expõe o site WordPress na porta 8088 da sua máquina
+      - "8088:80"
+    environment:
+      WORDPRESS_DB_HOST: wp-db
+      WORDPRESS_DB_USER: wordpress_user
+      WORDPRESS_DB_PASSWORD: wordpress_password
+      WORDPRESS_DB_NAME: wordpress_db
+    depends_on:
+      wp-db: { condition: service_healthy }
+    volumes:
+      # Este é o volume que o agente também irá monitorar
+      - wordpress-files:/var/www/html
+
+volumes:
+  postgres-data:
+  wordpress-db-data:
+  wordpress-files:
