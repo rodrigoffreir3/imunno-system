@@ -72,7 +72,8 @@ services:
     volumes:
       - wordpress-db-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "healthcheck.sh", "--su-mysql", "--connect", "--user=wordpress_user", "--password=wordpress_password"]
+      # --- ESTA É A PARTE CORRIGIDA E MAIS ROBUSTA ---
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pchangethisrootpassword"]
       interval: 10s
       timeout: 5s
       retries: 5
