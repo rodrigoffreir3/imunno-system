@@ -1,6 +1,9 @@
-# Arquivo docker-compose.yml - Versão com WordPress para Curadoria de Dados
+# Arquivo docker-compose.yml - Versão Final e Corrigida
+# Usa MySQL para compatibilidade com a imagem oficial do WordPress
+# e mantém toda a estrutura do Imunno System intacta.
+
 services:
-  # --- NOSSOS SERVIÇOS EXISTENTES ---
+  # --- NOSSOS SERVIÇOS IMUNNO SYSTEM (Sem alterações) ---
   postgres:
     image: postgres:15-alpine
     container_name: imunno_postgres
@@ -42,7 +45,6 @@ services:
       - AUDIT_CONTROL
     env_file: .env
     volumes:
-      # IMPORTANTE: Agora o agente vigia a pasta do WordPress
       - wordpress-files:/data
       - ./quarantine_files:/app/quarantine
 
@@ -58,21 +60,25 @@ services:
       timeout: 5s
       retries: 5
 
-  # --- NOVOS SERVIÇOS PARA A CURADORIA DE DADOS ---
-  # Bloco Corrigido com MariaDB
+  # --- SERVIÇOS DE TESTE WORDPRESS (Com a configuração correta) ---
   wp-db:
-    image: postgres:15-alpine
+    # Usando a imagem oficial do MySQL, que é 100% compatível com o WordPress
+    image: mysql:8.0
     container_name: wordpress_db
     restart: always
+    # Variáveis de ambiente específicas para a imagem do MySQL
     environment:
-      POSTGRES_USER: wordpress_user
-      POSTGRES_PASSWORD: wordpress_password
-      POSTGRES_DB: wordpress_db
+      MYSQL_DATABASE: wordpress_db
+      MYSQL_USER: wordpress_user
+      MYSQL_PASSWORD: wordpress_password
+      MYSQL_ROOT_PASSWORD: changethisrootpassword
     volumes:
-      - wordpress-db-data:/var/lib/postgresql/data
+      # O volume para MySQL armazena dados em /var/lib/mysql
+      - wordpress-db-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U wordpress_user -d wordpress_db"]
-      interval: 5s
+      # Healthcheck robusto e padrão de mercado para MySQL/MariaDB
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost", "-u", "root", "-pchangethisrootpassword"]
+      interval: 10s
       timeout: 5s
       retries: 5
 
@@ -81,17 +87,17 @@ services:
     container_name: wordpress_site
     restart: always
     ports:
-      # Expõe o site WordPress na porta 8088 da sua máquina
       - "8088:80"
     environment:
+      # As variáveis do WordPress não mudam, elas se conectam ao serviço 'wp-db'
       WORDPRESS_DB_HOST: wp-db
       WORDPRESS_DB_USER: wordpress_user
       WORDPRESS_DB_PASSWORD: wordpress_password
       WORDPRESS_DB_NAME: wordpress_db
     depends_on:
+      # A dependência continua a mesma, esperando o wp-db ser saudável
       wp-db: { condition: service_healthy }
     volumes:
-      # Este é o volume que o agente também irá monitorar
       - wordpress-files:/var/www/html
 
 volumes:
