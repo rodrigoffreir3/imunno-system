@@ -58,20 +58,22 @@ services:
       timeout: 5s
       retries: 5
 
-  # --- NOSSOS NOVOS SERVIÇOS PARA A CURADORIA DE DADOS ---
+  # --- NOVOS SERVIÇOS PARA A CURADORIA DE DADOS ---
+  # Bloco Corrigido com MariaDB
   wp-db:
-    image: postgres:15-alpine
+    image: mariadb:latest
     container_name: wordpress_db
     restart: always
     environment:
-      POSTGRES_USER: wordpress_user
-      POSTGRES_PASSWORD: wordpress_password
-      POSTGRES_DB: wordpress_db
+      MARIADB_DATABASE: wordpress_db
+      MARIADB_USER: wordpress_user
+      MARIADB_PASSWORD: wordpress_password
+      MARIADB_ROOT_PASSWORD: changethisrootpassword
     volumes:
-      - wordpress-db-data:/var/lib/postgresql/data
+      - wordpress-db-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U wordpress_user -d wordpress_db"]
-      interval: 5s
+      test: ["CMD", "healthcheck.sh", "--su-mysql", "--connect", "--user=wordpress_user", "--password=wordpress_password"]
+      interval: 10s
       timeout: 5s
       retries: 5
 
