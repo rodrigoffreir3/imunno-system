@@ -1,15 +1,17 @@
-// Arquivo: imunno-collector/main.go (Versão Definitiva)
+// Arquivo: imunno-collector/main.go (Versão Definitiva e Corrigida)
 package main
 
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"imunno-collector/analyzer"
-	"imunno-collector/config" // <<< Assegura que estamos usando nosso pacote config
+	"imunno-collector/config"
 	"imunno-collector/database"
 	"imunno-collector/hub"
 	"imunno-collector/ml_client"
@@ -108,40 +110,70 @@ func (s *DBStore) ListRecentEvents(ctx context.Context, limit int) ([]map[string
 	return events, nil
 }
 
-// Os Handlers de evento (fileEventHandler, processEventHandler, etc.) permanecem os mesmos.
-func fileEventHandler(store Store, commandHub *hub.Hub, cfg *config.Config) http.HandlerFunc {
+// fileEventHandler AGORA VERIFICA A CONFIGURAÇÃO ANTES DE AGIR
+func fileEventHandler(store Store, commandHub *hub.Hub, cfg config.Config) http.HandlerFunc {
 	const THREAT_THRESHOLD = 40
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
 			return
 		}
+
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Erro ao ler o corpo da requisição", http.StatusInternalServerError)
+			return
+		}
+		r.Body.Close()
+
 		var event FileEvent
-		if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
+		if err := json.Unmarshal(bodyBytes, &event); err != nil {
 			http.Error(w, "Corpo da requisição inválido", http.StatusBadRequest)
 			return
 		}
+
 		log.Printf("=== Evento de Arquivo Recebido: %s (Agente: %s) ===", event.FilePath, event.AgentID)
+
+		content, err := os.ReadFile(event.FilePath)
+		if err != nil {
+			log.Printf("!!! AVISO: Não foi possível ler o conteúdo do arquivo %s para análise: %v", event.FilePath, err)
+			event.Content = "" // Garante que o conteúdo esteja vazio se não puder ser lido
+		} else {
+			event.Content = string(content)
+		}
+
 		analysisResult := analyzer.AnalisarConteudo(event.Content)
 		log.Printf("... Análise de arquivo concluída. Pontuação: %d. Achados: %v", analysisResult.ThreatScore, analysisResult.Findings)
+
 		if err := store.SaveFileEvent(context.Background(), event, analysisResult); err != nil {
 			log.Printf("!!! Erro ao salvar evento de arquivo: %v", err)
 			http.Error(w, "Erro interno", http.StatusInternalServerError)
 			return
 		}
 		log.Printf("+++ Evento de arquivo salvo com sucesso!")
+
+		// >>>>>>>>>>>>>>>> INÍCIO DA ALTERAÇÃO IMPORTANTE <<<<<<<<<<<<<<<<
 		if analysisResult.ThreatScore >= THREAT_THRESHOLD {
-			log.Printf("!!! AMEAÇA DETECTADA! Pontuação (%d) acima do limite (%d). Enviando ordem de quarentena...", analysisResult.ThreatScore, THREAT_THRESHOLD)
-			command := hub.CommandMessage{
-				Action:  "quarantine",
-				Payload: map[string]string{"file_path": event.FilePath},
-			}
-			if err := commandHub.SendCommandToAgent(event.AgentID, command); err != nil {
-				log.Printf("!!! Erro ao enviar comando para o agente: %v", err)
+			log.Printf("!!! AMEAÇA DETECTADA! Pontuação (%d) acima do limite (%d).", analysisResult.ThreatScore, THREAT_THRESHOLD)
+
+			// VERIFICA SE A QUARENTENA ESTÁ HABILITADA ANTES DE AGIR
+			if cfg.EnableQuarantine {
+				log.Println(">>> Quarentena HABILITADA. Enviando ordem para o agente...")
+				command := hub.CommandMessage{
+					Action:  "quarantine",
+					Payload: map[string]string{"file_path": event.FilePath},
+				}
+				if err := commandHub.SendCommandToAgent(event.AgentID, command); err != nil {
+					log.Printf("!!! Erro ao enviar comando para o agente: %v", err)
+				}
+			} else {
+				log.Println(">>> Quarentena DESABILITADA nas configurações. Nenhuma ordem de quarentena foi enviada.")
 			}
 		} else {
 			log.Printf("--- Evento de arquivo de baixo risco. Nenhuma ação automática.")
 		}
+		// >>>>>>>>>>>>>>>> FIM DA ALTERAÇÃO IMPORTANTE <<<<<<<<<<<<<<<<
+
 		go func() {
 			mlEvent := ml_client.EventData{
 				AgentID:   event.AgentID,
@@ -154,13 +186,13 @@ func fileEventHandler(store Store, commandHub *hub.Hub, cfg *config.Config) http
 					"analysis_findings": analysisResult.Findings,
 				},
 			}
-			ml_client.ForwardEvent(mlEvent, cfg.MLService.URL)
+			ml_client.ForwardEvent(mlEvent, cfg.MLServiceURL)
 		}()
 		w.WriteHeader(http.StatusAccepted)
 	}
 }
 
-func processEventHandler(store Store, commandHub *hub.Hub, cfg *config.Config) http.HandlerFunc {
+func processEventHandler(store Store, commandHub *hub.Hub, cfg config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
@@ -186,13 +218,20 @@ func processEventHandler(store Store, commandHub *hub.Hub, cfg *config.Config) h
 		if found {
 			log.Printf("!!! CORRELAÇÃO DE AMEAÇA DETECTADA !!!")
 			log.Printf("O processo (Score: %d) pode estar relacionado ao arquivo: %s", analysisResult.ThreatScore, recentThreat.FilePath)
-			command := hub.CommandMessage{
-				Action:  "quarantine",
-				Payload: map[string]string{"file_path": recentThreat.FilePath},
+
+			// >>>>>>>>>>>>>>>> INÍCIO DA SEGUNDA ALTERAÇÃO <<<<<<<<<<<<<<<<
+			if cfg.EnableQuarantine {
+				command := hub.CommandMessage{
+					Action:  "quarantine",
+					Payload: map[string]string{"file_path": recentThreat.FilePath},
+				}
+				if err := commandHub.SendCommandToAgent(event.AgentID, command); err != nil {
+					log.Printf("!!! Erro ao enviar comando de quarentena por correlação: %v", err)
+				}
+			} else {
+				log.Println(">>> Quarentena DESABILITADA, nenhuma ação de correlação foi tomada.")
 			}
-			if err := commandHub.SendCommandToAgent(event.AgentID, command); err != nil {
-				log.Printf("!!! Erro ao enviar comando de quarentena por correlação: %v", err)
-			}
+			// >>>>>>>>>>>>>>>> FIM DA SEGUNDA ALTERAÇÃO <<<<<<<<<<<<<<<<
 		}
 		go func() {
 			mlEvent := ml_client.EventData{
@@ -208,7 +247,7 @@ func processEventHandler(store Store, commandHub *hub.Hub, cfg *config.Config) h
 					"process_findings":     analysisResult.Findings,
 				},
 			}
-			ml_client.ForwardEvent(mlEvent, cfg.MLService.URL)
+			ml_client.ForwardEvent(mlEvent, cfg.MLServiceURL)
 		}()
 		w.WriteHeader(http.StatusAccepted)
 	}
@@ -238,17 +277,13 @@ func apiEventsHandler(store Store) http.HandlerFunc {
 	}
 }
 
-// A função main agora reflete nossa arquitetura final.
 func main() {
-	// <<<--- AQUI ESTÁ A MUDANÇA MAIS IMPORTANTE ---<<<
-	// Carrega a configuração a partir das variáveis de ambiente.
-	// Sem caminhos de arquivo, sem chance de erro 'no such file or directory'.
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatalf("Erro fatal ao carregar a configuração: %v", err)
 	}
 
-	dbPool, err := database.New(cfg.Database.URL)
+	dbPool, err := database.New(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("Não foi possível conectar ao banco de dados: %v", err)
 	}
@@ -260,18 +295,18 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/v1/events", apiEventsHandler(store))
+
+	// A lógica dos handlers agora recebe a configuração para tomar decisões
 	mux.HandleFunc("/v1/events", fileEventHandler(store, commandHub, cfg))
 	mux.HandleFunc("/v1/events/process", processEventHandler(store, commandHub, cfg))
+
 	mux.HandleFunc("/ws", commandHub.ServeWs)
 
-	// <<<--- E A SEGUNDA MUDANÇA IMPORTANTE ---<<<
-	// Dizemos ao FileServer para procurar os arquivos na pasta /static,
-	// que foi copiada pelo nosso novo Dockerfile.
-	fileServer := http.FileServer(http.Dir("/static"))
+	fileServer := http.FileServer(http.Dir("./static"))
 	mux.Handle("/", fileServer)
 
-	log.Printf("Servidor 'imunno-collector' unificado iniciado na porta %s...", cfg.Server.Port)
-	if err := http.ListenAndServe(":"+cfg.Server.Port, mux); err != nil {
+	log.Printf("Servidor 'imunno-collector' unificado iniciado na porta %s...", cfg.ServerPort)
+	if err := http.ListenAndServe(":"+cfg.ServerPort, mux); err != nil {
 		log.Fatalf("Erro ao iniciar o servidor: %v", err)
 	}
 }
