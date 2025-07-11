@@ -1,4 +1,4 @@
-// Arquivo: imunno-collector/main.go (Versão Definitiva e Corrigida)
+// Arquivo: imunno-collector/main.go (Versão com lógica de Whitelist integrada)
 package main
 
 import (
@@ -19,12 +19,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// A interface Store permanece a mesma.
+// A interface Store agora inclui a verificação da whitelist.
 type Store interface {
 	SaveFileEvent(ctx context.Context, event FileEvent, analysisResult analyzer.AnalysisResult) error
 	SaveProcessEvent(ctx context.Context, event ProcessEvent, analysisResult analyzer.AnalysisResult) error
 	FindRecentHighThreatFileEvent(ctx context.Context, agentID string, window time.Duration) (FileEvent, bool, error)
 	ListRecentEvents(ctx context.Context, limit int) ([]map[string]interface{}, error)
+	IsHashWhitelisted(ctx context.Context, hash string) (bool, error) // <-- NOSSA NOVA FUNÇÃO NA INTERFACE
 }
 
 // A struct DBStore permanece a mesma.
@@ -32,7 +33,12 @@ type DBStore struct {
 	Pool *pgxpool.Pool
 }
 
-// Todas as funções de banco de dados (SaveFileEvent, SaveProcessEvent, etc.) permanecem as mesmas.
+// Implementação da nova função da interface para DBStore.
+func (s *DBStore) IsHashWhitelisted(ctx context.Context, hash string) (bool, error) {
+	return database.IsHashWhitelisted(ctx, s.Pool, hash)
+}
+
+// As outras funções de banco de dados (SaveFileEvent, etc.) permanecem as mesmas.
 func (s *DBStore) SaveFileEvent(ctx context.Context, event FileEvent, result analyzer.AnalysisResult) error {
 	findingsJSON, err := json.Marshal(result.Findings)
 	if err != nil {
@@ -110,7 +116,7 @@ func (s *DBStore) ListRecentEvents(ctx context.Context, limit int) ([]map[string
 	return events, nil
 }
 
-// fileEventHandler AGORA VERIFICA A CONFIGURAÇÃO ANTES DE AGIR
+// fileEventHandler AGORA COM A LÓGICA DE WHITELIST
 func fileEventHandler(store Store, commandHub *hub.Hub, cfg config.Config) http.HandlerFunc {
 	const THREAT_THRESHOLD = 40
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -134,10 +140,25 @@ func fileEventHandler(store Store, commandHub *hub.Hub, cfg config.Config) http.
 
 		log.Printf("=== Evento de Arquivo Recebido: %s (Agente: %s) ===", event.FilePath, event.AgentID)
 
+		// >>>>>>>>>>>>>>>> INÍCIO DA LÓGICA DE WHITELIST <<<<<<<<<<<<<<<<
+		isWhitelisted, err := store.IsHashWhitelisted(context.Background(), event.FileHashSHA256)
+		if err != nil {
+			log.Printf("!!! Erro ao checar a whitelist. Prosseguindo com a análise por segurança. Erro: %v", err)
+		}
+
+		if isWhitelisted {
+			log.Printf("--- HASH SEGURO DETECTADO. O arquivo '%s' está na whitelist. Nenhuma análise necessária.", event.FilePath)
+			// Se o arquivo é seguro, não fazemos nada e consideramos a pontuação como 0.
+			// Podemos opcionalmente salvar o evento com score 0 se quisermos um log de tudo.
+			w.WriteHeader(http.StatusAccepted)
+			return // Interrompe a execução aqui.
+		}
+		// >>>>>>>>>>>>>>>> FIM DA LÓGICA DE WHITELIST <<<<<<<<<<<<<<<<
+
 		content, err := os.ReadFile(event.FilePath)
 		if err != nil {
 			log.Printf("!!! AVISO: Não foi possível ler o conteúdo do arquivo %s para análise: %v", event.FilePath, err)
-			event.Content = "" // Garante que o conteúdo esteja vazio se não puder ser lido
+			event.Content = ""
 		} else {
 			event.Content = string(content)
 		}
@@ -152,11 +173,8 @@ func fileEventHandler(store Store, commandHub *hub.Hub, cfg config.Config) http.
 		}
 		log.Printf("+++ Evento de arquivo salvo com sucesso!")
 
-		// >>>>>>>>>>>>>>>> INÍCIO DA ALTERAÇÃO IMPORTANTE <<<<<<<<<<<<<<<<
 		if analysisResult.ThreatScore >= THREAT_THRESHOLD {
 			log.Printf("!!! AMEAÇA DETECTADA! Pontuação (%d) acima do limite (%d).", analysisResult.ThreatScore, THREAT_THRESHOLD)
-
-			// VERIFICA SE A QUARENTENA ESTÁ HABILITADA ANTES DE AGIR
 			if cfg.EnableQuarantine {
 				log.Println(">>> Quarentena HABILITADA. Enviando ordem para o agente...")
 				command := hub.CommandMessage{
@@ -172,7 +190,6 @@ func fileEventHandler(store Store, commandHub *hub.Hub, cfg config.Config) http.
 		} else {
 			log.Printf("--- Evento de arquivo de baixo risco. Nenhuma ação automática.")
 		}
-		// >>>>>>>>>>>>>>>> FIM DA ALTERAÇÃO IMPORTANTE <<<<<<<<<<<<<<<<
 
 		go func() {
 			mlEvent := ml_client.EventData{
@@ -192,6 +209,7 @@ func fileEventHandler(store Store, commandHub *hub.Hub, cfg config.Config) http.
 	}
 }
 
+// O resto do arquivo (processEventHandler, apiEventsHandler, main) permanece o mesmo.
 func processEventHandler(store Store, commandHub *hub.Hub, cfg config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -218,8 +236,6 @@ func processEventHandler(store Store, commandHub *hub.Hub, cfg config.Config) ht
 		if found {
 			log.Printf("!!! CORRELAÇÃO DE AMEAÇA DETECTADA !!!")
 			log.Printf("O processo (Score: %d) pode estar relacionado ao arquivo: %s", analysisResult.ThreatScore, recentThreat.FilePath)
-
-			// >>>>>>>>>>>>>>>> INÍCIO DA SEGUNDA ALTERAÇÃO <<<<<<<<<<<<<<<<
 			if cfg.EnableQuarantine {
 				command := hub.CommandMessage{
 					Action:  "quarantine",
@@ -231,7 +247,6 @@ func processEventHandler(store Store, commandHub *hub.Hub, cfg config.Config) ht
 			} else {
 				log.Println(">>> Quarentena DESABILITADA, nenhuma ação de correlação foi tomada.")
 			}
-			// >>>>>>>>>>>>>>>> FIM DA SEGUNDA ALTERAÇÃO <<<<<<<<<<<<<<<<
 		}
 		go func() {
 			mlEvent := ml_client.EventData{
@@ -296,7 +311,6 @@ func main() {
 
 	mux.HandleFunc("/api/v1/events", apiEventsHandler(store))
 
-	// A lógica dos handlers agora recebe a configuração para tomar decisões
 	mux.HandleFunc("/v1/events", fileEventHandler(store, commandHub, cfg))
 	mux.HandleFunc("/v1/events/process", processEventHandler(store, commandHub, cfg))
 
