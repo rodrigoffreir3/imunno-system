@@ -30,10 +30,12 @@ func IsHashWhitelisted(ctx context.Context, pool *pgxpool.Pool, hash string) (bo
 
 	err := pool.QueryRow(ctx, sql, hash).Scan(&exists)
 	if err != nil {
-		// Se não for um erro de "nenhuma linha encontrada", registramos o erro.
+		// Este erro não deve acontecer em operação normal, mas é bom registrar.
 		log.Printf("!!! Erro ao verificar a whitelist para o hash %s: %v", hash, err)
 		return false, err
 	}
 
 	return exists, nil
 }
+
+// >>>>>>>>>>>>>>>> FIM DA NOVA FUNÇÃO <<<<<<<<<<<<<<<<
