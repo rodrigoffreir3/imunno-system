@@ -1,14 +1,3 @@
-// Arquivo: populate_whitelist.go
-//
-// Este programa lê o arquivo 'wordpress_hashes.txt',
-// analisa cada linha e gera os comandos SQL INSERT
-// necessários para popular nossa tabela 'known_good_hashes'.
-//
-// Como compilar e rodar:
-// 1. Salve este arquivo na raiz do projeto.
-// 2. No terminal, execute: go run populate_whitelist.go > insert_hashes.sql
-// 3. Isso criará um novo arquivo 'insert_hashes.sql' com todos os comandos.
-
 package main
 
 import (
