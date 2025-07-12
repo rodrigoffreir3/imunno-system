@@ -1,14 +1,17 @@
+// Arquivo: imunno-collector/analyzer/heuristic.go (Com regras de detecção aprimoradas)
 package analyzer
 
 import (
 	"regexp"
 )
 
+// AnalysisResult não muda.
 type AnalysisResult struct {
 	ThreatScore int
 	Findings    []string
 }
 
+// RegraHeuristica não muda.
 type RegraHeuristica struct {
 	Descricao string
 	Padrao    *regexp.Regexp
@@ -22,9 +25,9 @@ var regrasDeArquivo = []RegraHeuristica{
 		Pontuacao: 50,
 	},
 	{
-		// >>>>>>>>>>>>>>>> REGRA CORRIGIDA <<<<<<<<<<<<<<<<
+		// >>>>>>>>>>>>>>>> REGRA CORRIGIDA E EXPANDIDA <<<<<<<<<<<<<<<<
 		Descricao: "Funcao perigosa de execucao de comando",
-		Padrao:    regexp.MustCompile(`(shell_exec|passthru|system)\s*\(`),
+		Padrao:    regexp.MustCompile(`(shell_exec|passthru|system|exec|popen|proc_open)\s*\(`),
 		Pontuacao: 40,
 	},
 	{
@@ -38,8 +41,9 @@ var regrasDeArquivo = []RegraHeuristica{
 		Pontuacao: 15,
 	},
 	{
-		Descricao: "Uso de variaveis superglobais 'POST' ou 'GET'",
-		Padrao:    regexp.MustCompile(`\$_(POST|GET|REQUEST)\s*\[`),
+		// Adicionamos $_REQUEST para pegar mais tipos de entrada do usuário
+		Descricao: "Uso de variaveis superglobais perigosas",
+		Padrao:    regexp.MustCompile(`\$_(POST|GET|REQUEST|COOKIE)\s*\[`),
 		Pontuacao: 10,
 	},
 	{
@@ -77,6 +81,7 @@ var regrasDeProcesso = []RegraHeuristica{
 	},
 }
 
+// A função de análise de conteúdo de arquivo não muda.
 func AnalisarConteudo(conteudo string) AnalysisResult {
 	var resultado AnalysisResult
 	for _, regra := range regrasDeArquivo {
@@ -88,6 +93,7 @@ func AnalisarConteudo(conteudo string) AnalysisResult {
 	return resultado
 }
 
+// A função de análise de comando de processo não muda.
 func AnalisarProcesso(comando string) AnalysisResult {
 	var resultado AnalysisResult
 	for _, regra := range regrasDeProcesso {
