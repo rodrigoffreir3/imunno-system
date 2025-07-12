@@ -1,13 +1,11 @@
-// Arquivo: imunno-collector/main.go (Versão com lógica de Whitelist integrada)
+// Arquivo: imunno-collector/main.go (Versão com lógica de análise corrigida)
 package main
 
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
 	"imunno-collector/analyzer"
@@ -19,13 +17,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// A interface Store agora inclui a verificação da whitelist.
+// A interface Store permanece a mesma.
 type Store interface {
 	SaveFileEvent(ctx context.Context, event FileEvent, analysisResult analyzer.AnalysisResult) error
 	SaveProcessEvent(ctx context.Context, event ProcessEvent, analysisResult analyzer.AnalysisResult) error
 	FindRecentHighThreatFileEvent(ctx context.Context, agentID string, window time.Duration) (FileEvent, bool, error)
 	ListRecentEvents(ctx context.Context, limit int) ([]map[string]interface{}, error)
-	IsHashWhitelisted(ctx context.Context, hash string) (bool, error) // <-- NOSSA NOVA FUNÇÃO NA INTERFACE
+	IsHashWhitelisted(ctx context.Context, hash string) (bool, error)
 }
 
 // A struct DBStore permanece a mesma.
@@ -33,7 +31,7 @@ type DBStore struct {
 	Pool *pgxpool.Pool
 }
 
-// Implementação da nova função da interface para DBStore.
+// Implementação da função da interface para DBStore.
 func (s *DBStore) IsHashWhitelisted(ctx context.Context, hash string) (bool, error) {
 	return database.IsHashWhitelisted(ctx, s.Pool, hash)
 }
@@ -116,7 +114,7 @@ func (s *DBStore) ListRecentEvents(ctx context.Context, limit int) ([]map[string
 	return events, nil
 }
 
-// fileEventHandler AGORA COM A LÓGICA DE WHITELIST
+// fileEventHandler COM A LÓGICA DE ANÁLISE CORRIGIDA
 func fileEventHandler(store Store, commandHub *hub.Hub, cfg config.Config) http.HandlerFunc {
 	const THREAT_THRESHOLD = 40
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -125,22 +123,14 @@ func fileEventHandler(store Store, commandHub *hub.Hub, cfg config.Config) http.
 			return
 		}
 
-		bodyBytes, err := io.ReadAll(r.Body)
-		if err != nil {
-			http.Error(w, "Erro ao ler o corpo da requisição", http.StatusInternalServerError)
-			return
-		}
-		r.Body.Close()
-
 		var event FileEvent
-		if err := json.Unmarshal(bodyBytes, &event); err != nil {
+		if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
 			http.Error(w, "Corpo da requisição inválido", http.StatusBadRequest)
 			return
 		}
 
 		log.Printf("=== Evento de Arquivo Recebido: %s (Agente: %s) ===", event.FilePath, event.AgentID)
 
-		// >>>>>>>>>>>>>>>> INÍCIO DA LÓGICA DE WHITELIST <<<<<<<<<<<<<<<<
 		isWhitelisted, err := store.IsHashWhitelisted(context.Background(), event.FileHashSHA256)
 		if err != nil {
 			log.Printf("!!! Erro ao checar a whitelist. Prosseguindo com a análise por segurança. Erro: %v", err)
@@ -148,22 +138,16 @@ func fileEventHandler(store Store, commandHub *hub.Hub, cfg config.Config) http.
 
 		if isWhitelisted {
 			log.Printf("--- HASH SEGURO DETECTADO. O arquivo '%s' está na whitelist. Nenhuma análise necessária.", event.FilePath)
-			// Se o arquivo é seguro, não fazemos nada e consideramos a pontuação como 0.
-			// Podemos opcionalmente salvar o evento com score 0 se quisermos um log de tudo.
 			w.WriteHeader(http.StatusAccepted)
-			return // Interrompe a execução aqui.
-		}
-		// >>>>>>>>>>>>>>>> FIM DA LÓGICA DE WHITELIST <<<<<<<<<<<<<<<<
-
-		content, err := os.ReadFile(event.FilePath)
-		if err != nil {
-			log.Printf("!!! AVISO: Não foi possível ler o conteúdo do arquivo %s para análise: %v", event.FilePath, err)
-			event.Content = ""
-		} else {
-			event.Content = string(content)
+			return
 		}
 
+		// >>>>>>>>>>>>>>>> CORREÇÃO IMPORTANTE <<<<<<<<<<<<<<<<
+		// REMOVEMOS a tentativa de ler o arquivo novamente.
+		// AGORA, usamos o campo 'Content' que o agente já nos enviou no evento.
 		analysisResult := analyzer.AnalisarConteudo(event.Content)
+		// >>>>>>>>>>>>>>>> FIM DA CORREÇÃO <<<<<<<<<<<<<<<<
+
 		log.Printf("... Análise de arquivo concluída. Pontuação: %d. Achados: %v", analysisResult.ThreatScore, analysisResult.Findings)
 
 		if err := store.SaveFileEvent(context.Background(), event, analysisResult); err != nil {
