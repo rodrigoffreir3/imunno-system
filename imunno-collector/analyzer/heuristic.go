@@ -1,4 +1,4 @@
-// Arquivo: imunno-collector/analyzer/heuristic.go (Com regras de detecção aprimoradas)
+// Arquivo: imunno-collector/analyzer/heuristic.go (Versão Final e Corrigida)
 package analyzer
 
 import (
@@ -18,36 +18,35 @@ type RegraHeuristica struct {
 	Pontuacao int
 }
 
+// >>>>>>>>>>>>>>>> REGRAS CORRIGIDAS <<<<<<<<<<<<<<<<
 var regrasDeArquivo = []RegraHeuristica{
 	{
-		Descricao: "Funcao perigosa 'eval'",
+		Descricao: "Funcao perigosa 'eval' detectada",
 		Padrao:    regexp.MustCompile(`eval\s*\(`),
 		Pontuacao: 50,
 	},
 	{
-		// REGRA EXPANDIDA para pegar mais funções de execução
-		Descricao: "Funcao perigosa de execucao de comando",
+		Descricao: "Funcao perigosa de execucao de comando detectada",
 		Padrao:    regexp.MustCompile(`(shell_exec|passthru|system|exec|popen|proc_open)\s*\(`),
 		Pontuacao: 40,
 	},
 	{
-		Descricao: "Funcao de ofuscacao 'base64_decode'",
+		Descricao: "Funcao de ofuscacao 'base64_decode' detectada",
 		Padrao:    regexp.MustCompile(`base64_decode\s*\(`),
 		Pontuacao: 20,
 	},
 	{
-		Descricao: "Funcao de ofuscacao 'gzuncompress' ou 'str_rot13'",
+		Descricao: "Funcao de ofuscacao 'gzuncompress' ou 'str_rot13' detectada",
 		Padrao:    regexp.MustCompile(`(gzuncompress|str_rot13)\s*\(`),
 		Pontuacao: 15,
 	},
 	{
-		// REGRA EXPANDIDA para pegar $_REQUEST e $_COOKIE
-		Descricao: "Uso de variaveis superglobais perigosas",
+		Descricao: "Uso de variaveis superglobais perigosas detectado",
 		Padrao:    regexp.MustCompile(`\$_(POST|GET|REQUEST|COOKIE)\s*\[`),
 		Pontuacao: 10,
 	},
 	{
-		Descricao: "Funcao de inclusao de arquivos 'include' ou 'require'",
+		Descricao: "Funcao de inclusao de arquivos 'include' ou 'require' detectada",
 		Padrao:    regexp.MustCompile(`(include|require)(_once)?\s*\(`),
 		Pontuacao: 5,
 	},
