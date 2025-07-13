@@ -1,81 +1,93 @@
-# Arquivo: imunno-ml-service/main.py (Com Feature Engineering Corrigido)
+# Arquivo: imunno-ml-service/main.py
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import Dict, Any, List, Optional
-import logging
 import joblib
 import pandas as pd # type: ignore
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+import logging
+import os
 
-# --- CONFIGURAÇÃO E CARREGAMENTO DO MODELO ---
+# Configuração do logging
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# --- Modelos de Dados (Contrato da API) ---
+class EventData(BaseModel):
+    threat_score: int = Field(..., alias="threat_score")
+    file_size: int = Field(..., alias="file_size")
+    is_php: bool = Field(..., alias="is_php")
+    is_js: bool = Field(..., alias="is_js")
+
+class PredictionResponse(BaseModel):
+    is_anomaly: bool
+    confidence: float
+
+# --- Inicialização do Aplicativo e Carregamento do Modelo ---
 app = FastAPI()
 
-# As características EXATAS que foram usadas para treinar o modelo. A ordem importa.
-MODEL_FEATURES = [
-    'threat_score', 'num_findings', 'is_php', 'cmd_wget', 'cmd_curl', 
-    'cmd_nc', 'cmd_netcat', 'cmd_chmod', 'cmd_whoami', 'cmd_uname'
-]
+# Caminho para o modelo de IA. Usando o nome correto que você apontou.
+MODEL_PATH = os.getenv("MODEL_PATH", "imunno_model.joblib")
+model = None
 
-try:
-    model = joblib.load("imunno_classifier.joblib")
-    logging.info("Modelo de classificação de IA 'imunno_classifier.joblib' carregado com sucesso!")
-except FileNotFoundError:
-    logging.error("Arquivo do modelo 'imunno_classifier.joblib' não encontrado!")
-    model = None
+@app.on_event("startup")
+def load_model():
+    """
+    Função executada na inicialização do serviço para carregar o modelo de IA.
+    """
+    global model
+    try:
+        model = joblib.load(MODEL_PATH)
+        logger.info(f"Modelo de IA carregado com sucesso de '{MODEL_PATH}'")
+    except FileNotFoundError:
+        logger.error(f"ERRO CRÍTICO: Arquivo do modelo não encontrado em '{MODEL_PATH}'")
+        model = None
+    except Exception as e:
+        logger.error(f"ERRO CRÍTICO: Falha ao carregar o modelo de IA: {e}")
+        model = None
 
-# --- DEFINIÇÃO DOS DADOS DE ENTRADA ---
-class EventData(BaseModel):
-    agent_id: str
-    hostname: str
-    event_type: str
-    details: Dict[str, Any]
+# --- Endpoints da API ---
 
-# --- ENDPOINTS DA API ---
-@app.get("/")
-def read_root():
-    return {"status": "Imunno ML Service (Classifier) is running", "model_loaded": model is not None}
+@app.get("/health")
+def health_check():
+    """Endpoint de verificação de saúde."""
+    if model is not None:
+        return {"status": "ok", "model_loaded": True}
+    return {"status": "error", "model_loaded": False, "message": "Modelo de IA não pôde ser carregado."}
 
-@app.post("/analyze")
-def analyze_event(event: EventData):
+@app.post("/predict", response_model=PredictionResponse)
+def predict(event_data: EventData):
+    """Endpoint principal para fazer previsões de anomalia."""
     if model is None:
-        raise HTTPException(status_code=500, detail="Modelo de IA não está carregado.")
+        logger.error("Tentativa de predição falhou porque o modelo não está carregado.")
+        raise HTTPException(status_code=503, detail="Serviço indisponível: Modelo de IA não carregado.")
 
-    logging.info(f"Analisando evento do agente {event.agent_id} com o modelo classificador...")
+    try:
+        # A ordem das features DEVE ser a mesma usada no notebook de treinamento.
+        feature_order = ['threat_score', 'file_size', 'is_php', 'is_js']
 
-    # 1. PREPARAÇÃO DOS DADOS (Feature Engineering Corrigido)
-    # Criamos um dicionário com todas as features esperadas, inicializadas com 0.
-    features_dict = {feature: 0 for feature in MODEL_FEATURES}
+        # Converte o objeto Pydantic para um dicionário.
+        data_dict = event_data.dict()
 
-    if event.event_type == "FILE_EVENT":
-        features_dict['threat_score'] = event.details.get("threat_score", 0)
-        
-        analysis_findings_list = event.details.get("analysis_findings")
-        if analysis_findings_list is None:
-            analysis_findings_list = []
-        features_dict['num_findings'] = len(analysis_findings_list)
-        
-        file_path = event.details.get("file_path", "")
-        features_dict['is_php'] = 1 if file_path.endswith('.php') else 0
-    
-    elif event.event_type == "PROCESS_EVENT":
-        # (Lógica futura para eventos de processo iria aqui)
-        # Por enquanto, ele passará um dicionário de zeros, resultando em uma previsão "benigna".
-        pass
+        # Cria um DataFrame do Pandas, garantindo a ordem correta das colunas.
+        df = pd.DataFrame([data_dict])
+        df = df[feature_order]
 
-    # Converte o dicionário para um DataFrame do Pandas com a ordem de colunas correta.
-    current_features = pd.DataFrame([features_dict], columns=MODEL_FEATURES)
+        logger.info(f"DataFrame criado para predição: \n{df.to_string()}")
 
-    # 2. INFERÊNCIA
-    prediction_label = model.predict(current_features)[0]
-    prediction_text = "malicious" if prediction_label == 1 else "benign"
+        # Realiza a predição.
+        prediction_result = model.predict(df.values)
+        prediction_proba = model.predict_proba(df.values)
 
-    logging.info(f"Previsão do modelo: {prediction_text.upper()} (Rótulo: {prediction_label})")
+        # O resultado de predict() é -1 para anomalia e 1 para normal.
+        is_anomaly = bool(prediction_result[0] == -1)
 
-    # 3. RETORNO
-    return {
-        "prediction": prediction_text,
-        "prediction_label": int(prediction_label),
-        "threat_score_input": features_dict['threat_score'],
-        "message": "Análise de classificação concluída."
-    }
+        # A 'confiança' é a maior probabilidade entre as classes.
+        confidence = float(prediction_proba.max())
+
+        logger.info(f"Predição: Anomalia={is_anomaly}, Confiança={confidence:.4f}")
+
+        return PredictionResponse(is_anomaly=is_anomaly, confidence=confidence)
+
+    except Exception as e:
+        logger.error(f"Erro durante a execução da predição: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro interno no processamento da predição: {e}")

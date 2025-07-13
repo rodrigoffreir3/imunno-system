@@ -1,4 +1,4 @@
-// Arquivo: imunno-collector/analyzer/heuristic.go (Versão Final e Corrigida)
+// Arquivo: imunno-collector/analyzer/heuristic.go (Versão Final, Revisada e Corrigida)
 package analyzer
 
 import (
@@ -18,7 +18,7 @@ type RegraHeuristica struct {
 	Pontuacao int
 }
 
-// >>>>>>>>>>>>>>>> REGRAS CORRIGIDAS <<<<<<<<<<<<<<<<
+// >>>>>>>>>>>>>>>> REGRAS CORRIGIDAS E VERIFICADAS <<<<<<<<<<<<<<<<
 var regrasDeArquivo = []RegraHeuristica{
 	{
 		Descricao: "Funcao perigosa 'eval' detectada",
