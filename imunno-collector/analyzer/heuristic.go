@@ -25,7 +25,7 @@ var regrasDeArquivo = []RegraHeuristica{
 		Pontuacao: 50,
 	},
 	{
-		// >>>>>>>>>>>>>>>> REGRA CORRIGIDA E EXPANDIDA <<<<<<<<<<<<<<<<
+		// REGRA EXPANDIDA para pegar mais funções de execução
 		Descricao: "Funcao perigosa de execucao de comando",
 		Padrao:    regexp.MustCompile(`(shell_exec|passthru|system|exec|popen|proc_open)\s*\(`),
 		Pontuacao: 40,
@@ -41,7 +41,7 @@ var regrasDeArquivo = []RegraHeuristica{
 		Pontuacao: 15,
 	},
 	{
-		// Adicionamos $_REQUEST para pegar mais tipos de entrada do usuário
+		// REGRA EXPANDIDA para pegar $_REQUEST e $_COOKIE
 		Descricao: "Uso de variaveis superglobais perigosas",
 		Padrao:    regexp.MustCompile(`\$_(POST|GET|REQUEST|COOKIE)\s*\[`),
 		Pontuacao: 10,
