@@ -1,122 +1,76 @@
-// Arquivo: imunno-collector/main.go (Versão com lógica de análise corrigida)
+// Arquivo: imunno-collector/main.go
+// Versão final e corrigida, com a arquitetura de pacotes e imports correta.
+
 package main
 
 import (
-	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
+	// --- IMPORTAÇÕES CORRIGIDAS ---
+	// Usando o nome do módulo definido em go.mod como base para os imports.
 	"imunno-collector/analyzer"
 	"imunno-collector/config"
 	"imunno-collector/database"
 	"imunno-collector/hub"
 	"imunno-collector/ml_client"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/gorilla/websocket"
 )
 
-// A interface Store permanece a mesma.
-type Store interface {
-	SaveFileEvent(ctx context.Context, event FileEvent, analysisResult analyzer.AnalysisResult) error
-	SaveProcessEvent(ctx context.Context, event ProcessEvent, analysisResult analyzer.AnalysisResult) error
-	FindRecentHighThreatFileEvent(ctx context.Context, agentID string, window time.Duration) (FileEvent, bool, error)
-	ListRecentEvents(ctx context.Context, limit int) ([]map[string]interface{}, error)
-	IsHashWhitelisted(ctx context.Context, hash string) (bool, error)
-}
+// main é o ponto de entrada da nossa aplicação.
+func main() {
+	log.Println("--- INICIANDO IMUNNO COLLECTOR ---")
 
-// A struct DBStore permanece a mesma.
-type DBStore struct {
-	Pool *pgxpool.Pool
-}
-
-// Implementação da função da interface para DBStore.
-func (s *DBStore) IsHashWhitelisted(ctx context.Context, hash string) (bool, error) {
-	return database.IsHashWhitelisted(ctx, s.Pool, hash)
-}
-
-// As outras funções de banco de dados (SaveFileEvent, etc.) permanecem as mesmas.
-func (s *DBStore) SaveFileEvent(ctx context.Context, event FileEvent, result analyzer.AnalysisResult) error {
-	findingsJSON, err := json.Marshal(result.Findings)
+	cfg, err := config.Load()
 	if err != nil {
-		return err
+		log.Fatalf("CRÍTICO: Não foi possível carregar a configuração: %v", err)
 	}
-	sql := `INSERT INTO events (agent_id, hostname, file_path, file_hash_sha256, event_type, event_timestamp, threat_score, analysis_findings)
-	         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
-	_, err = s.Pool.Exec(ctx, sql,
-		event.AgentID, event.Hostname, event.FilePath, event.FileHashSHA256,
-		event.EventType, event.Timestamp, result.ThreatScore, findingsJSON)
-	return err
-}
 
-func (s *DBStore) SaveProcessEvent(ctx context.Context, event ProcessEvent, result analyzer.AnalysisResult) error {
-	sql := `INSERT INTO process_events (agent_id, hostname, event_timestamp, process_id, parent_id, command, username, threat_score)
-	         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
-	_, err := s.Pool.Exec(ctx, sql,
-		event.AgentID, event.Hostname, event.Timestamp,
-		event.ProcessID, event.ParentID, event.Command, event.Username,
-		result.ThreatScore)
-	return err
-}
-
-func (s *DBStore) FindRecentHighThreatFileEvent(ctx context.Context, agentID string, window time.Duration) (FileEvent, bool, error) {
-	var event FileEvent
-	const THREAT_THRESHOLD = 40
-	since := time.Now().Add(-window)
-	sql := `SELECT file_path FROM events 
-	         WHERE agent_id = $1 
-	         AND threat_score >= $2
-	         AND event_timestamp >= $3
-	         ORDER BY event_timestamp DESC
-	         LIMIT 1`
-	err := s.Pool.QueryRow(ctx, sql, agentID, THREAT_THRESHOLD, since).Scan(&event.FilePath)
+	var db *database.Database
+	for i := 0; i < 10; i++ {
+		db, err = database.New(cfg)
+		if err == nil {
+			log.Println(">>> SUCESSO: Conexão com o banco de dados estabelecida!")
+			break
+		}
+		log.Printf(">>> TENTATIVA %d/10: Falha ao conectar ao banco de dados: %v. Tentando novamente em 5 segundos...", i+1, err)
+		time.Sleep(5 * time.Second)
+	}
 	if err != nil {
-		if err.Error() == "no rows in result set" || err.Error() == "scany: no row was found" {
-			return FileEvent{}, false, nil
-		}
-		return FileEvent{}, false, err
+		log.Fatalf("CRÍTICO: Não foi possível estabelecer conexão com o banco de dados após múltiplas tentativas. Desistindo. Erro final: %v", err)
 	}
-	return event, true, nil
+
+	hub := hub.NewHub(db)
+	go hub.Run()
+
+	mlClient := ml_client.New(cfg.MLServiceURL)
+
+	http.HandleFunc("/v1/events/file", fileEventHandler(db, hub, mlClient, cfg.EnableQuarantine))
+	http.HandleFunc("/v1/events/process", processEventHandler(db, hub))
+	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		serveWs(hub, w, r)
+	})
+
+	fs := http.FileServer(http.Dir("./static"))
+	http.Handle("/", fs)
+
+	log.Println("Servidor iniciado na porta 8080. Aguardando agentes...")
+	if err := http.ListenAndServe(":8080", nil); err != nil {
+		log.Fatalf("Falha ao iniciar o servidor: %v", err)
+	}
 }
 
-func (s *DBStore) ListRecentEvents(ctx context.Context, limit int) ([]map[string]interface{}, error) {
-	sql := `
-    (SELECT 'file' as event_source, agent_id, hostname, event_timestamp, threat_score, analysis_findings::text as details FROM events)
-    UNION ALL
-    (SELECT 'process' as event_source, agent_id, hostname, event_timestamp, threat_score, command as details FROM process_events)
-    ORDER BY event_timestamp DESC
-    LIMIT $1;
-    `
-	rows, err := s.Pool.Query(ctx, sql, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var events []map[string]interface{}
-	for rows.Next() {
-		var eventSource, agentID, hostname, details string
-		var eventTimestamp time.Time
-		var threatScore int
-		if err := rows.Scan(&eventSource, &agentID, &hostname, &eventTimestamp, &threatScore, &details); err != nil {
-			return nil, err
-		}
-		eventMap := map[string]interface{}{
-			"source":       eventSource,
-			"agent_id":     agentID,
-			"hostname":     hostname,
-			"timestamp":    eventTimestamp.Format(time.RFC3339),
-			"threat_score": threatScore,
-			"details":      details,
-		}
-		events = append(events, eventMap)
-	}
-	return events, nil
-}
-
-// fileEventHandler COM A LÓGICA DE ANÁLISE CORRIGIDA
-func fileEventHandler(store Store, commandHub *hub.Hub, cfg config.Config) http.HandlerFunc {
-	const THREAT_THRESHOLD = 40
+// fileEventHandler lida com os eventos de arquivo recebidos.
+func fileEventHandler(db *database.Database, hub *hub.Hub, mlClient *ml_client.MLClient, enableQuarantine bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
@@ -125,186 +79,170 @@ func fileEventHandler(store Store, commandHub *hub.Hub, cfg config.Config) http.
 
 		var event FileEvent
 		if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
-			http.Error(w, "Corpo da requisição inválido", http.StatusBadRequest)
+			http.Error(w, "Erro ao decodificar o corpo da requisição", http.StatusBadRequest)
 			return
 		}
 
-		log.Printf("=== Evento de Arquivo Recebido: %s (Agente: %s) ===", event.FilePath, event.AgentID)
+		log.Printf("Evento de arquivo recebido de %s: %s", event.AgentID, event.FilePath)
 
-		isWhitelisted, err := store.IsHashWhitelisted(context.Background(), event.FileHashSHA256)
+		isWhitelisted, err := db.IsHashWhitelisted(event.FileHashSHA256)
 		if err != nil {
-			log.Printf("!!! Erro ao checar a whitelist. Prosseguindo com a análise por segurança. Erro: %v", err)
+			log.Printf("Erro ao verificar whitelist para o hash %s: %v", event.FileHashSHA256, err)
 		}
 
+		event.IsWhitelisted = isWhitelisted
 		if isWhitelisted {
-			log.Printf("--- HASH SEGURO DETECTADO. O arquivo '%s' está na whitelist. Nenhuma análise necessária.", event.FilePath)
-			w.WriteHeader(http.StatusAccepted)
-			return
-		}
-
-		// >>>>>>>>>>>>>>>> CORREÇÃO IMPORTANTE <<<<<<<<<<<<<<<<
-		// REMOVEMOS a tentativa de ler o arquivo novamente.
-		// AGORA, usamos o campo 'Content' que o agente já nos enviou no evento.
-		analysisResult := analyzer.AnalisarConteudo(event.Content)
-		// >>>>>>>>>>>>>>>> FIM DA CORREÇÃO <<<<<<<<<<<<<<<<
-
-		log.Printf("... Análise de arquivo concluída. Pontuação: %d. Achados: %v", analysisResult.ThreatScore, analysisResult.Findings)
-
-		if err := store.SaveFileEvent(context.Background(), event, analysisResult); err != nil {
-			log.Printf("!!! Erro ao salvar evento de arquivo: %v", err)
-			http.Error(w, "Erro interno", http.StatusInternalServerError)
-			return
-		}
-		log.Printf("+++ Evento de arquivo salvo com sucesso!")
-
-		if analysisResult.ThreatScore >= THREAT_THRESHOLD {
-			log.Printf("!!! AMEAÇA DETECTADA! Pontuação (%d) acima do limite (%d).", analysisResult.ThreatScore, THREAT_THRESHOLD)
-			if cfg.EnableQuarantine {
-				log.Println(">>> Quarentena HABILITADA. Enviando ordem para o agente...")
-				command := hub.CommandMessage{
-					Action:  "quarantine",
-					Payload: map[string]string{"file_path": event.FilePath},
-				}
-				if err := commandHub.SendCommandToAgent(event.AgentID, command); err != nil {
-					log.Printf("!!! Erro ao enviar comando para o agente: %v", err)
-				}
-			} else {
-				log.Println(">>> Quarentena DESABILITADA nas configurações. Nenhuma ordem de quarentena foi enviada.")
-			}
+			log.Printf("Arquivo %s (%s) está na whitelist. Ignorando análise.", event.FilePath, event.FileHashSHA256)
+			event.ThreatScore = 0
 		} else {
-			log.Printf("--- Evento de arquivo de baixo risco. Nenhuma ação automática.")
+			content, err := os.ReadFile(event.FilePath)
+			if err != nil {
+				log.Printf("Erro ao ler o arquivo %s para análise: %v", event.FilePath, err)
+			} else {
+				event.ThreatScore, event.AnalysisFindings = analyzer.AnalyzeContent(content)
+				log.Printf("Análise heurística concluída para %s. Pontuação de ameaça: %d", event.FilePath, event.ThreatScore)
+
+				fileSize, _ := getFileSize(event.FilePath)
+				isPHP := strings.HasSuffix(strings.ToLower(event.FilePath), ".php")
+				isJS := strings.HasSuffix(strings.ToLower(event.FilePath), ".js")
+
+				prediction, err := mlClient.Predict(event.ThreatScore, fileSize, isPHP, isJS)
+				if err != nil {
+					log.Printf("Erro ao chamar o serviço de ML: %v", err)
+				} else {
+					log.Printf("Predição da IA: Anomalia=%t, Confiança=%.2f", prediction.IsAnomaly, prediction.Confidence)
+					if prediction.IsAnomaly && prediction.Confidence > 0.75 {
+						event.ThreatScore += 20
+						log.Printf("Pontuação de ameaça aumentada pela IA para %d", event.ThreatScore)
+					}
+				}
+			}
 		}
 
-		go func() {
-			mlEvent := ml_client.EventData{
-				AgentID:   event.AgentID,
-				Hostname:  event.Hostname,
-				EventType: "FILE_EVENT",
-				Details: map[string]interface{}{
-					"file_path":         event.FilePath,
-					"file_hash":         event.FileHashSHA256,
-					"threat_score":      analysisResult.ThreatScore,
-					"analysis_findings": analysisResult.Findings,
-				},
+		if enableQuarantine && event.ThreatScore >= 40 {
+			quarantinedPath, err := quarantineFile(event.FilePath)
+			if err != nil {
+				log.Printf("FALHA AO COLOCAR EM QUARENTENA o arquivo %s: %v", event.FilePath, err)
+			} else {
+				log.Printf("SUCESSO: Arquivo %s movido para quarentena em %s", event.FilePath, quarantinedPath)
+				event.QuarantinedPath = quarantinedPath
 			}
-			ml_client.ForwardEvent(mlEvent, cfg.MLServiceURL)
-		}()
+		}
+
+		if err := db.InsertFileEvent(&event); err != nil {
+			log.Printf("Erro ao inserir evento de arquivo no banco de dados: %v", err)
+			http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
+			return
+		}
+
+		eventJSON, _ := json.Marshal(event)
+		hub.Broadcast <- eventJSON
+
 		w.WriteHeader(http.StatusAccepted)
 	}
 }
 
-// O resto do arquivo (processEventHandler, apiEventsHandler, main) permanece o mesmo.
-func processEventHandler(store Store, commandHub *hub.Hub, cfg config.Config) http.HandlerFunc {
+// processEventHandler lida com todos os eventos de processo recebidos.
+func processEventHandler(db *database.Database, hub *hub.Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
 			return
 		}
+
 		var event ProcessEvent
 		if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
-			http.Error(w, "Corpo da requisição inválido", http.StatusBadRequest)
+			http.Error(w, "Erro ao decodificar o corpo da requisição", http.StatusBadRequest)
 			return
 		}
-		analysisResult := analyzer.AnalisarProcesso(event.Command)
-		log.Printf("--- Evento de Processo Recebido: PID=%d, Comando='%s', Pontuação de Ameaça: %d ---", event.ProcessID, event.Command, analysisResult.ThreatScore)
-		if err := store.SaveProcessEvent(context.Background(), event, analysisResult); err != nil {
-			log.Printf("!!! Erro ao salvar evento de processo: %v", err)
-		} else {
-			log.Printf("+++ Evento de processo e análise salvos com sucesso!")
+
+		log.Printf("Evento de processo recebido de %s: PID=%d, Comando=%s", event.AgentID, event.ProcessID, event.Command)
+
+		if err := db.InsertProcessEvent(&event); err != nil {
+			log.Printf("Erro ao inserir evento de processo no banco de dados: %v", err)
+			http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
+			return
 		}
 
-		recentThreat, found, err := store.FindRecentHighThreatFileEvent(context.Background(), event.AgentID, 60*time.Second)
-		if err != nil {
-			log.Printf("!!! Erro ao buscar por ameaças recentes para correlação: %v", err)
-		}
-		if found {
-			log.Printf("!!! CORRELAÇÃO DE AMEAÇA DETECTADA !!!")
-			log.Printf("O processo (Score: %d) pode estar relacionado ao arquivo: %s", analysisResult.ThreatScore, recentThreat.FilePath)
-			if cfg.EnableQuarantine {
-				command := hub.CommandMessage{
-					Action:  "quarantine",
-					Payload: map[string]string{"file_path": recentThreat.FilePath},
-				}
-				if err := commandHub.SendCommandToAgent(event.AgentID, command); err != nil {
-					log.Printf("!!! Erro ao enviar comando de quarentena por correlação: %v", err)
-				}
-			} else {
-				log.Println(">>> Quarentena DESABILITADA, nenhuma ação de correlação foi tomada.")
-			}
-		}
-		go func() {
-			mlEvent := ml_client.EventData{
-				AgentID:   event.AgentID,
-				Hostname:  event.Hostname,
-				EventType: "PROCESS_EVENT",
-				Details: map[string]interface{}{
-					"process_id":           event.ProcessID,
-					"parent_id":            event.ParentID,
-					"command":              event.Command,
-					"username":             event.Username,
-					"process_threat_score": analysisResult.ThreatScore,
-					"process_findings":     analysisResult.Findings,
-				},
-			}
-			ml_client.ForwardEvent(mlEvent, cfg.MLServiceURL)
-		}()
+		eventJSON, _ := json.Marshal(event)
+		hub.Broadcast <- eventJSON
+
 		w.WriteHeader(http.StatusAccepted)
 	}
 }
 
-func apiEventsHandler(store Store) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		if r.Method != http.MethodGet {
-			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
-			return
-		}
-		events, err := store.ListRecentEvents(context.Background(), 50)
-		if err != nil {
-			log.Printf("!!! API_ERROR: Erro ao buscar eventos: %v", err)
-			http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(events)
+func serveWs(hub *hub.Hub, w http.ResponseWriter, r *http.Request) {
+	upgrader := websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
 	}
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	client := &hub.Client{Hub: hub, Conn: conn, Send: make(chan []byte, 256)}
+	client.Hub.Register <- client
+
+	go client.WritePump()
+	go client.ReadPump()
 }
 
-func main() {
-	cfg, err := config.LoadConfig()
+func getFileSize(filePath string) (int, error) {
+	fileInfo, err := os.Stat(filePath)
 	if err != nil {
-		log.Fatalf("Erro fatal ao carregar a configuração: %v", err)
+		return 0, err
+	}
+	return int(fileInfo.Size()), nil
+}
+
+func quarantineFile(filePath string) (string, error) {
+	quarantineDir := "/quarantine"
+	if _, err := os.Stat(quarantineDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(quarantineDir, 0755); err != nil {
+			return "", fmt.Errorf("não foi possível criar o diretório de quarentena: %w", err)
+		}
 	}
 
-	dbPool, err := database.New(cfg.DatabaseURL)
+	sourceFile, err := os.Open(filePath)
 	if err != nil {
-		log.Fatalf("Não foi possível conectar ao banco de dados: %v", err)
+		return "", fmt.Errorf("não foi possível abrir o arquivo de origem: %w", err)
 	}
-	defer dbPool.Close()
+	defer sourceFile.Close()
 
-	store := &DBStore{Pool: dbPool}
-	commandHub := hub.NewHub()
+	fileName := filepath.Base(filePath)
+	timestamp := time.Now().Unix()
+	destFileName := fmt.Sprintf("%d_%s.infected", timestamp, fileName)
+	destPath := filepath.Join(quarantineDir, destFileName)
 
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/api/v1/events", apiEventsHandler(store))
-
-	mux.HandleFunc("/v1/events", fileEventHandler(store, commandHub, cfg))
-	mux.HandleFunc("/v1/events/process", processEventHandler(store, commandHub, cfg))
-
-	mux.HandleFunc("/ws", commandHub.ServeWs)
-
-	fileServer := http.FileServer(http.Dir("./static"))
-	mux.Handle("/", fileServer)
-
-	log.Printf("Servidor 'imunno-collector' unificado iniciado na porta %s...", cfg.ServerPort)
-	if err := http.ListenAndServe(":"+cfg.ServerPort, mux); err != nil {
-		log.Fatalf("Erro ao iniciar o servidor: %v", err)
+	destFile, err := os.Create(destPath)
+	if err != nil {
+		return "", fmt.Errorf("não foi possível criar o arquivo de destino na quarentena: %w", err)
 	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, sourceFile)
+	if err != nil {
+		return "", fmt.Errorf("não foi possível copiar o arquivo para a quarentena: %w", err)
+	}
+
+	sourceFile.Close()
+
+	err = os.Remove(filePath)
+	if err != nil {
+		return "", fmt.Errorf("não foi possível remover o arquivo original após a quarentena: %w", err)
+	}
+
+	return destPath, nil
+}
+
+func getEnvAsInt(name string, defaultValue int) int {
+	valueStr := os.Getenv(name)
+	if value, err := strconv.Atoi(valueStr); err == nil {
+		return value
+	}
+	return defaultValue
 }

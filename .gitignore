@@ -1,0 +1,29 @@
+# Arquivo .gitignore
+
+# Arquivos de ambiente - NUNCA comitar segredos!
+.env
+
+# Pastas de dados dos contêineres Docker
+/postgres-data/
+/mysql-data/
+/wordpress/
+
+# Arquivos de sistema operacional
+.DS_Store
+Thumbs.db
+
+# Arquivos de cache e logs do VSCode
+.vscode/
+*.log
+
+# Arquivos de cache do Python
+__pycache__/
+*.pyc
+
+# Binários e executáveis
+*.exe
+*.out
+*.so
+
+# Pasta de quarentena
+/quarantine_files/

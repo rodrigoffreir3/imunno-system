@@ -1,106 +1,111 @@
-# Arquivo docker-compose.yml - Versão Final e Corrigida
-# Usa MySQL para compatibilidade com a imagem oficial do WordPress
-# e mantém toda a estrutura do Imunno System intacta.
+version: '3.8'
 
 services:
-  # --- NOSSOS SERVIÇOS IMUNNO SYSTEM (Sem alterações) ---
-  postgres:
-    image: postgres:15-alpine
+  imunno_postgres:
+    image: postgres:14-alpine
     container_name: imunno_postgres
-    restart: always
+    restart: unless-stopped
     environment:
+      POSTGRES_DB: imunno_db
       POSTGRES_USER: imunno_user
       POSTGRES_PASSWORD: imunno_password
-      POSTGRES_DB: imunno_db
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+      - ./postgres-init/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5432:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./postgres-init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U imunno_user -d imunno_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  collector:
-    build: ./imunno-collector
-    container_name: imunno_collector
-    restart: always
-    ports:
-      - "8181:8080"
-    depends_on:
-      postgres: { condition: service_healthy }
-      ml-service: { condition: service_healthy }
-    env_file: .env
-
-  agent:
-    build: ./imunno-agent
-    container_name: imunno_agent
-    restart: always
-    depends_on:
-      collector: { condition: service_started }
-    cap_add:
-      - AUDIT_WRITE
-      - AUDIT_CONTROL
-    env_file: .env
-    volumes:
-      - wordpress-files:/data
-      - ./quarantine_files:/app/quarantine
-
-  ml-service:
-    build: ./imunno-ml-service
-    container_name: imunno_ml_service
-    restart: always
-    ports:
-      - "8000:8000"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  # --- SERVIÇOS DE TESTE WORDPRESS (Com a configuração correta) ---
-  wp-db:
-    # Usando a imagem oficial do MySQL, que é 100% compatível com o WordPress
-    image: mysql:8.0
-    container_name: wordpress_db
-    restart: always
-    # Variáveis de ambiente específicas para a imagem do MySQL
-    environment:
-      MYSQL_DATABASE: wordpress_db
-      MYSQL_USER: wordpress_user
-      MYSQL_PASSWORD: wordpress_password
-      MYSQL_ROOT_PASSWORD: changethisrootpassword
-    volumes:
-      # O volume para MySQL armazena dados em /var/lib/mysql
-      - wordpress-db-data:/var/lib/mysql
-    healthcheck:
-      # Healthcheck robusto e padrão de mercado para MySQL/MariaDB
-      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost", "-u", "root", "-pchangethisrootpassword"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  wordpress:
+  wordpress_db:
+    image: mysql:5.7
+    container_name: wordpress_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: wordpress_db
+      MYSQL_USER: wp_user
+      MYSQL_PASSWORD: wp_password
+    volumes:
+      - ./mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  wordpress_site:
     image: wordpress:latest
     container_name: wordpress_site
-    restart: always
+    restart: unless-stopped
     ports:
-      - "8088:80"
+      - "8081:80"
     environment:
-      # As variáveis do WordPress não mudam, elas se conectam ao serviço 'wp-db'
-      WORDPRESS_DB_HOST: wp-db
-      WORDPRESS_DB_USER: wordpress_user
-      WORDPRESS_DB_PASSWORD: wordpress_password
+      WORDPRESS_DB_HOST: wordpress_db:3306
+      WORDPRESS_DB_USER: wp_user
+      WORDPRESS_DB_PASSWORD: wp_password
       WORDPRESS_DB_NAME: wordpress_db
-    depends_on:
-      # A dependência continua a mesma, esperando o wp-db ser saudável
-      wp-db: { condition: service_healthy }
     volumes:
-      - wordpress-files:/var/www/html
+      - ./wordpress:/var/www/html
+    depends_on:
+      wordpress_db:
+        condition: service_healthy
+
+  ml-service:
+    build:
+      context: ./imunno-ml-service
+    container_name: imunno_ml_service
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  collector:
+    build:
+      context: ./imunno-collector
+    container_name: imunno_collector
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./quarantine_files:/quarantine
+    depends_on:
+      imunno_postgres:
+        condition: service_healthy
+      ml-service:
+        condition: service_healthy
+    # --- A CORREÇÃO DA INCONSISTÊNCIA ESTÁ AQUI ---
+    environment:
+      - COLLECTOR_ENABLE_QUARANTINE=${COLLECTOR_ENABLE_QUARANTINE}
+      - DB_HOST=imunno_postgres
+      - DB_PORT=5432
+      - DB_USER=imunno_user
+      - DB_PASSWORD=imunno_password
+      - DB_NAME=imunno_db
+      - ML_SERVICE_URL=http://ml-service:8000
+
+  agent:
+    build:
+      context: ./imunno-agent
+    container_name: imunno_agent
+    restart: unless-stopped
+    cap_add:
+      - AUDIT_CONTROL
+      - AUDIT_READ
+    volumes:
+      - ./wordpress:/data
+    depends_on:
+      - collector
 
 volumes:
   postgres-data:
-  wordpress-db-data:
-  wordpress-files:
+  mysql-data:
+  wordpress:
