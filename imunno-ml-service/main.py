@@ -25,7 +25,6 @@ class PredictionResponse(BaseModel):
 # --- Inicialização do Aplicativo e Carregamento do Modelo ---
 app = FastAPI()
 
-# Caminho para o modelo de IA. Usando o nome correto que você apontou.
 MODEL_PATH = os.getenv("MODEL_PATH", "imunno_model.joblib")
 model = None
 
@@ -33,16 +32,20 @@ model = None
 def load_model():
     """
     Função executada na inicialização do serviço para carregar o modelo de IA.
+    Agora, ela lida graciosamente com a ausência do arquivo do modelo.
     """
     global model
     try:
-        model = joblib.load(MODEL_PATH)
-        logger.info(f"Modelo de IA carregado com sucesso de '{MODEL_PATH}'")
-    except FileNotFoundError:
-        logger.error(f"ERRO CRÍTICO: Arquivo do modelo não encontrado em '{MODEL_PATH}'")
-        model = None
+        # Verifica se o arquivo do modelo existe ANTES de tentar carregá-lo.
+        if os.path.exists(MODEL_PATH):
+            model = joblib.load(MODEL_PATH)
+            logger.info(f"Modelo de IA carregado com sucesso de '{MODEL_PATH}'")
+        else:
+            # Se o arquivo não existe, apenas registra um aviso. A aplicação continuará funcionando.
+            logger.warning(f"AVISO: Arquivo do modelo '{MODEL_PATH}' não encontrado. O serviço iniciará sem capacidade de predição.")
+            model = None
     except Exception as e:
-        logger.error(f"ERRO CRÍTICO: Falha ao carregar o modelo de IA: {e}")
+        logger.error(f"ERRO CRÍTICO: Falha inesperada ao tentar carregar o modelo de IA: {e}")
         model = None
 
 # --- Endpoints da API ---
@@ -52,36 +55,27 @@ def health_check():
     """Endpoint de verificação de saúde."""
     if model is not None:
         return {"status": "ok", "model_loaded": True}
-    return {"status": "error", "model_loaded": False, "message": "Modelo de IA não pôde ser carregado."}
+    return {"status": "warning", "model_loaded": False, "message": "O serviço está rodando, mas o modelo de IA não está carregado."}
 
 @app.post("/predict", response_model=PredictionResponse)
 def predict(event_data: EventData):
     """Endpoint principal para fazer previsões de anomalia."""
+    # Se o modelo não foi carregado, retorna um erro 503 (Serviço Indisponível)
+    # informando que a capacidade de predição não está ativa.
     if model is None:
         logger.error("Tentativa de predição falhou porque o modelo não está carregado.")
         raise HTTPException(status_code=503, detail="Serviço indisponível: Modelo de IA não carregado.")
 
     try:
-        # A ordem das features DEVE ser a mesma usada no notebook de treinamento.
         feature_order = ['threat_score', 'file_size', 'is_php', 'is_js']
-
-        # Converte o objeto Pydantic para um dicionário.
         data_dict = event_data.dict()
-
-        # Cria um DataFrame do Pandas, garantindo a ordem correta das colunas.
         df = pd.DataFrame([data_dict])
         df = df[feature_order]
 
-        logger.info(f"DataFrame criado para predição: \n{df.to_string()}")
-
-        # Realiza a predição.
         prediction_result = model.predict(df.values)
         prediction_proba = model.predict_proba(df.values)
 
-        # O resultado de predict() é -1 para anomalia e 1 para normal.
         is_anomaly = bool(prediction_result[0] == -1)
-
-        # A 'confiança' é a maior probabilidade entre as classes.
         confidence = float(prediction_proba.max())
 
         logger.info(f"Predição: Anomalia={is_anomaly}, Confiança={confidence:.4f}")
