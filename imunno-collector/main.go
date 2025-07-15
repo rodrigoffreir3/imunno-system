@@ -1,5 +1,4 @@
 // Arquivo: imunno-collector/main.go
-// Versão final e corrigida, com a arquitetura de pacotes e imports correta.
 
 package main
 
@@ -16,7 +15,6 @@ import (
 	"time"
 
 	// --- IMPORTAÇÕES CORRIGIDAS ---
-	// Usando o nome do módulo definido em go.mod como base para os imports.
 	"imunno-collector/analyzer"
 	"imunno-collector/config"
 	"imunno-collector/database"
@@ -26,7 +24,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// main é o ponto de entrada da nossa aplicação.
+// A função main agora está mais limpa e focada em orquestrar os componentes.
 func main() {
 	log.Println("--- INICIANDO IMUNNO COLLECTOR ---")
 
@@ -69,7 +67,7 @@ func main() {
 	}
 }
 
-// fileEventHandler lida com os eventos de arquivo recebidos.
+// fileEventHandler lida com todos os eventos de arquivo recebidos.
 func fileEventHandler(db *database.Database, hub *hub.Hub, mlClient *ml_client.MLClient, enableQuarantine bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -171,6 +169,7 @@ func processEventHandler(db *database.Database, hub *hub.Hub) http.HandlerFunc {
 	}
 }
 
+// serveWs lida com as conexões WebSocket.
 func serveWs(hub *hub.Hub, w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,

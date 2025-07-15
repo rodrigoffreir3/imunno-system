@@ -1,40 +1,71 @@
-// Arquivo: imunno-collector/ml_client/client.go
-package ml_client
+// Arquivo: imunno-collector/hub/client.go
+
+package hub
 
 import (
-	"bytes"
-	"encoding/json"
 	"log"
-	"net/http"
+	"time"
+
+	"github.com/gorilla/websocket"
 )
 
-// EventData é a estrutura que nosso serviço Python espera receber.
-type EventData struct {
-	AgentID   string                 `json:"agent_id"`
-	Hostname  string                 `json:"hostname"`
-	EventType string                 `json:"event_type"`
-	Details   map[string]interface{} `json:"details"`
+// Client é um intermediário entre a conexão websocket e o hub.
+type Client struct {
+	Hub  *Hub
+	Conn *websocket.Conn
+	Send chan []byte
 }
 
-// ForwardEvent envia um evento para o serviço de ML para análise.
-func ForwardEvent(eventData EventData, mlServiceURL string) {
-	jsonData, err := json.Marshal(eventData)
-	if err != nil {
-		log.Printf("!!! ML_CLIENT: Erro ao converter evento para JSON: %v", err)
-		return
+// ReadPump bombeia mensagens da conexão websocket para o hub.
+func (c *Client) ReadPump() {
+	defer func() {
+		c.Hub.Unregister <- c
+		c.Conn.Close()
+	}()
+	c.Conn.SetReadLimit(maxMessageSize)
+	c.Conn.SetReadDeadline(time.Now().Add(pongWait))
+	c.Conn.SetPongHandler(func(string) error { c.Conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
+	for {
+		_, _, err := c.Conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Printf("error: %v", err)
+			}
+			break
+		}
 	}
+}
 
-	resp, err := http.Post(mlServiceURL, "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		log.Printf("!!! ML_CLIENT: Erro ao enviar evento para o serviço de ML: %v", err)
-		return
+// WritePump bombeia mensagens do hub para a conexão websocket.
+func (c *Client) WritePump() {
+	ticker := time.NewTicker(pingPeriod)
+	defer func() {
+		ticker.Stop()
+		c.Conn.Close()
+	}()
+	for {
+		select {
+		case message, ok := <-c.Send:
+			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if !ok {
+				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+
+			w, err := c.Conn.NextWriter(websocket.TextMessage)
+			if err != nil {
+				return
+			}
+			w.Write(message)
+
+			if err := w.Close(); err != nil {
+				return
+			}
+		case <-ticker.C:
+			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
+		}
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		log.Printf("!!! ML_CLIENT: Serviço de ML respondeu com status inesperado: %s", resp.Status)
-		return
-	}
-
-	log.Println("--- Evento encaminhado com sucesso para o serviço de ML.")
 }
