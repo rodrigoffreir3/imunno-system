@@ -1,4 +1,4 @@
-module imunno-collector
+module imunno-system/imunno-collector
 
 go 1.24
 

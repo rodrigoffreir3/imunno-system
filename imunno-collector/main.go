@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	// --- IMPORTAÇÕES CORRIGIDAS ---
 	"imunno-collector/analyzer"
 	"imunno-collector/config"
 	"imunno-collector/database"
@@ -24,7 +23,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// A função main agora está mais limpa e focada em orquestrar os componentes.
+// main é o ponto de entrada da nossa aplicação.
 func main() {
 	log.Println("--- INICIANDO IMUNNO COLLECTOR ---")
 
@@ -169,7 +168,6 @@ func processEventHandler(db *database.Database, hub *hub.Hub) http.HandlerFunc {
 	}
 }
 
-// serveWs lida com as conexões WebSocket.
 func serveWs(hub *hub.Hub, w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,

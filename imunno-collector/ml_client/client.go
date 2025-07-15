@@ -1,71 +1,81 @@
-// Arquivo: imunno-collector/hub/client.go
+// Arquivo: imunno-collector/ml_client/client.go
 
-package hub
+package ml_client
 
 import (
-	"log"
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
 	"time"
-
-	"github.com/gorilla/websocket"
 )
 
-// Client é um intermediário entre a conexão websocket e o hub.
-type Client struct {
-	Hub  *Hub
-	Conn *websocket.Conn
-	Send chan []byte
+// PredictionRequest é a estrutura enviada para o serviço de ML.
+type PredictionRequest struct {
+	ThreatScore int  `json:"threat_score"`
+	FileSize    int  `json:"file_size"`
+	IsPHP       bool `json:"is_php"`
+	IsJS        bool `json:"is_js"`
 }
 
-// ReadPump bombeia mensagens da conexão websocket para o hub.
-func (c *Client) ReadPump() {
-	defer func() {
-		c.Hub.Unregister <- c
-		c.Conn.Close()
-	}()
-	c.Conn.SetReadLimit(maxMessageSize)
-	c.Conn.SetReadDeadline(time.Now().Add(pongWait))
-	c.Conn.SetPongHandler(func(string) error { c.Conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
-	for {
-		_, _, err := c.Conn.ReadMessage()
-		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
-			}
-			break
-		}
+// PredictionResponse é a estrutura recebida do serviço de ML.
+type PredictionResponse struct {
+	IsAnomaly  bool    `json:"is_anomaly"`
+	Confidence float64 `json:"confidence"`
+}
+
+// MLClient é o cliente para o nosso serviço de IA.
+type MLClient struct {
+	BaseURL    string
+	HTTPClient *http.Client
+}
+
+// New cria uma nova instância do MLClient.
+func New(baseURL string) *MLClient {
+	return &MLClient{
+		BaseURL: baseURL,
+		HTTPClient: &http.Client{
+			Timeout: 10 * time.Second,
+		},
 	}
 }
 
-// WritePump bombeia mensagens do hub para a conexão websocket.
-func (c *Client) WritePump() {
-	ticker := time.NewTicker(pingPeriod)
-	defer func() {
-		ticker.Stop()
-		c.Conn.Close()
-	}()
-	for {
-		select {
-		case message, ok := <-c.Send:
-			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if !ok {
-				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
-				return
-			}
+// Predict envia os dados para o serviço de ML e retorna a predição.
+func (c *MLClient) Predict(threatScore, fileSize int, isPHP, isJS bool) (*PredictionResponse, error) {
+	requestURL := fmt.Sprintf("%s/predict", c.BaseURL)
 
-			w, err := c.Conn.NextWriter(websocket.TextMessage)
-			if err != nil {
-				return
-			}
-			w.Write(message)
-
-			if err := w.Close(); err != nil {
-				return
-			}
-		case <-ticker.C:
-			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				return
-			}
-		}
+	requestBody, err := json.Marshal(PredictionRequest{
+		ThreatScore: threatScore,
+		FileSize:    fileSize,
+		IsPHP:       isPHP,
+		IsJS:        isJS,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("erro ao converter requisição para JSON: %w", err)
 	}
+
+	req, err := http.NewRequest("POST", requestURL, bytes.NewBuffer(requestBody))
+	if err != nil {
+		return nil, fmt.Errorf("erro ao criar requisição HTTP: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao enviar requisição para o serviço de ML: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("serviço de ML respondeu com status inesperado %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var predictionResponse PredictionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&predictionResponse); err != nil {
+		return nil, fmt.Errorf("erro ao decodificar a resposta do serviço de ML: %w", err)
+	}
+
+	return &predictionResponse, nil
 }
