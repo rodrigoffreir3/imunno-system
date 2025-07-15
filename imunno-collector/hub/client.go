@@ -9,6 +9,13 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const (
+	writeWait      = 10 * time.Second
+	pongWait       = 60 * time.Second
+	pingPeriod     = (pongWait * 9) / 10
+	maxMessageSize = 512
+)
+
 // Client é um intermediário entre a conexão websocket e o hub.
 type Client struct {
 	Hub  *Hub

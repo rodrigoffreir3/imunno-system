@@ -1,57 +1,60 @@
-// Arquivo: imunno-collector/analyzer/heuristic.go (Versão Final, Revisada e Corrigida)
+// Arquivo: imunno-collector/analyzer/heuristic.go
+
 package analyzer
 
 import (
 	"regexp"
+	"strings"
 )
 
-// AnalysisResult não muda.
+// AnalysisResult representa o resultado de uma análise heurística.
 type AnalysisResult struct {
 	ThreatScore int
 	Findings    []string
 }
 
-// RegraHeuristica não muda.
+// RegraHeuristica define uma regra com padrão, descrição e pontuação.
 type RegraHeuristica struct {
 	Descricao string
 	Padrao    *regexp.Regexp
 	Pontuacao int
 }
 
-// >>>>>>>>>>>>>>>> REGRAS CORRIGIDAS E VERIFICADAS <<<<<<<<<<<<<<<<
+// >>>>>>>>>>>>>>>> REGRAS DE ARQUIVO <<<<<<<<<<<<<<<<
 var regrasDeArquivo = []RegraHeuristica{
 	{
-		Descricao: "Funcao perigosa 'eval' detectada",
+		Descricao: "Função perigosa 'eval' detectada",
 		Padrao:    regexp.MustCompile(`eval\s*\(`),
 		Pontuacao: 50,
 	},
 	{
-		Descricao: "Funcao perigosa de execucao de comando detectada",
+		Descricao: "Funções de execução de comando detectadas",
 		Padrao:    regexp.MustCompile(`(shell_exec|passthru|system|exec|popen|proc_open)\s*\(`),
 		Pontuacao: 40,
 	},
 	{
-		Descricao: "Funcao de ofuscacao 'base64_decode' detectada",
+		Descricao: "Uso de 'base64_decode' detectado",
 		Padrao:    regexp.MustCompile(`base64_decode\s*\(`),
 		Pontuacao: 20,
 	},
 	{
-		Descricao: "Funcao de ofuscacao 'gzuncompress' ou 'str_rot13' detectada",
+		Descricao: "Uso de 'gzuncompress' ou 'str_rot13' detectado",
 		Padrao:    regexp.MustCompile(`(gzuncompress|str_rot13)\s*\(`),
 		Pontuacao: 15,
 	},
 	{
-		Descricao: "Uso de variaveis superglobais perigosas detectado",
+		Descricao: "Uso de variáveis superglobais ($_POST, $_GET etc.)",
 		Padrao:    regexp.MustCompile(`\$_(POST|GET|REQUEST|COOKIE)\s*\[`),
 		Pontuacao: 10,
 	},
 	{
-		Descricao: "Funcao de inclusao de arquivos 'include' ou 'require' detectada",
+		Descricao: "Inclusão de arquivos com 'include' ou 'require'",
 		Padrao:    regexp.MustCompile(`(include|require)(_once)?\s*\(`),
 		Pontuacao: 5,
 	},
 }
 
+// >>>>>>>>>>>>>>>> REGRAS DE PROCESSO <<<<<<<<<<<<<<<<
 var regrasDeProcesso = []RegraHeuristica{
 	{
 		Descricao: "Download de arquivos (curl/wget)",
@@ -59,28 +62,28 @@ var regrasDeProcesso = []RegraHeuristica{
 		Pontuacao: 30,
 	},
 	{
-		Descricao: "Conexao de rede reversa (netcat/nc)",
+		Descricao: "Conexão de rede reversa (netcat/nc)",
 		Padrao:    regexp.MustCompile(`\s(nc|netcat)\s`),
 		Pontuacao: 50,
 	},
 	{
-		Descricao: "Coleta de informacoes (whoami/id)",
+		Descricao: "Coleta de informações (whoami/id/uname)",
 		Padrao:    regexp.MustCompile(`(whoami|id|uname)`),
 		Pontuacao: 10,
 	},
 	{
-		Descricao: "Alteracao de permissoes (chmod)",
+		Descricao: "Alteração de permissões (chmod)",
 		Padrao:    regexp.MustCompile(`chmod\s+[67]{3}`),
 		Pontuacao: 25,
 	},
 	{
-		Descricao: "Execucao de interpretador (sh/bash/py)",
+		Descricao: "Execução de interpretadores (sh/bash/python/perl)",
 		Padrao:    regexp.MustCompile(`\s(sh|bash|python|perl)\s`),
 		Pontuacao: 20,
 	},
 }
 
-// A função de análise de conteúdo de arquivo não muda.
+// AnalisarConteudo analisa um conteúdo de arquivo como string.
 func AnalisarConteudo(conteudo string) AnalysisResult {
 	var resultado AnalysisResult
 	for _, regra := range regrasDeArquivo {
@@ -92,7 +95,7 @@ func AnalisarConteudo(conteudo string) AnalysisResult {
 	return resultado
 }
 
-// A função de análise de comando de processo não muda.
+// AnalisarProcesso analisa um comando de processo.
 func AnalisarProcesso(comando string) AnalysisResult {
 	var resultado AnalysisResult
 	for _, regra := range regrasDeProcesso {
@@ -102,4 +105,11 @@ func AnalisarProcesso(comando string) AnalysisResult {
 		}
 	}
 	return resultado
+}
+
+// AnalyzeContent é a função esperada pelo main.go — ela converte []byte em análise.
+func AnalyzeContent(content []byte) (int, []byte) {
+	resultado := AnalisarConteudo(string(content))
+	findingsJSON := []byte(`["` + strings.Join(resultado.Findings, `","`) + `"]`)
+	return resultado.ThreatScore, findingsJSON
 }

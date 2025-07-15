@@ -1,7 +1,7 @@
 // Arquivo: imunno-collector/events.go
 // Esta é a nossa "Fonte Única da Verdade" para as estruturas de dados de eventos.
 
-package main
+package events
 
 import "time"
 

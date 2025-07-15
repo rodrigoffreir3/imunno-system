@@ -1,27 +1,34 @@
+// Arquivo: imunno-collector/config/config.go
+
 package config
 
 import (
 	"os"
-	"strconv" // Pacote necessário para converter string para booleano
+	"strconv"
 )
 
+// Config armazena todas as configurações da aplicação.
 type Config struct {
-	ServerPort       string
-	DatabaseURL      string
+	DBHost           string
+	DBPort           string
+	DBUser           string
+	DBPassword       string
+	DBName           string
 	MLServiceURL     string
-	EnableQuarantine bool // Nosso novo campo de configuração
+	EnableQuarantine bool
 }
 
-func LoadConfig() (Config, error) {
-	var cfg Config
-	cfg.ServerPort = os.Getenv("COLLECTOR_PORT")
-	cfg.DatabaseURL = os.Getenv("DB_URL")
-	cfg.MLServiceURL = os.Getenv("ML_SERVICE_URL")
+// Load carrega as configurações das variáveis de ambiente.
+func Load() (*Config, error) {
+	enableQuarantine, _ := strconv.ParseBool(os.Getenv("COLLECTOR_ENABLE_QUARANTINE"))
 
-	// Lê a nova variável e converte para booleano.
-	// Se a variável não existir, o padrão será 'false'.
-	enableQuarantineStr := os.Getenv("COLLECTOR_ENABLE_QUARANTINE")
-	cfg.EnableQuarantine, _ = strconv.ParseBool(enableQuarantineStr)
-
-	return cfg, nil
+	return &Config{
+		DBHost:           os.Getenv("DB_HOST"),
+		DBPort:           os.Getenv("DB_PORT"),
+		DBUser:           os.Getenv("DB_USER"),
+		DBPassword:       os.Getenv("DB_PASSWORD"),
+		DBName:           os.Getenv("DB_NAME"),
+		MLServiceURL:     os.Getenv("ML_SERVICE_URL"),
+		EnableQuarantine: enableQuarantine,
+	}, nil
 }

@@ -4,19 +4,9 @@ package hub
 
 import (
 	"imunno-collector/database"
-	"log"
-	"time"
 )
 
-// Constantes para o WebSocket
-const (
-	writeWait      = 10 * time.Second
-	pongWait       = 60 * time.Second
-	pingPeriod     = (pongWait * 9) / 10
-	maxMessageSize = 512
-)
-
-// Hub mantém o conjunto de clientes ativos.
+// Hub mantém o conjunto de clientes ativos e difunde mensagens para eles.
 type Hub struct {
 	Clients    map[*Client]bool
 	Broadcast  chan []byte
@@ -25,7 +15,7 @@ type Hub struct {
 	DB         *database.Database
 }
 
-// NewHub cria uma nova instância do Hub.
+// NewHub cria uma nova instância de Hub.
 func NewHub(db *database.Database) *Hub {
 	return &Hub{
 		Broadcast:  make(chan []byte),
@@ -36,18 +26,16 @@ func NewHub(db *database.Database) *Hub {
 	}
 }
 
-// Run inicia o processamento de mensagens do hub.
+// Run inicia o loop principal do hub.
 func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.Register:
 			h.Clients[client] = true
-			log.Println("Novo cliente WebSocket registrado.")
 		case client := <-h.Unregister:
 			if _, ok := h.Clients[client]; ok {
 				delete(h.Clients, client)
 				close(client.Send)
-				log.Println("Cliente WebSocket desregistrado.")
 			}
 		case message := <-h.Broadcast:
 			for client := range h.Clients {

@@ -1,5 +1,3 @@
-// Arquivo: imunno-collector/main.go
-
 package main
 
 import (
@@ -10,20 +8,19 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
 	"imunno-collector/analyzer"
 	"imunno-collector/config"
 	"imunno-collector/database"
+	"imunno-collector/events"
 	"imunno-collector/hub"
 	"imunno-collector/ml_client"
 
 	"github.com/gorilla/websocket"
 )
 
-// main é o ponto de entrada da nossa aplicação.
 func main() {
 	log.Println("--- INICIANDO IMUNNO COLLECTOR ---")
 
@@ -46,15 +43,15 @@ func main() {
 		log.Fatalf("CRÍTICO: Não foi possível estabelecer conexão com o banco de dados após múltiplas tentativas. Desistindo. Erro final: %v", err)
 	}
 
-	hub := hub.NewHub(db)
-	go hub.Run()
+	h := hub.NewHub(db)
+	go h.Run()
 
 	mlClient := ml_client.New(cfg.MLServiceURL)
 
-	http.HandleFunc("/v1/events/file", fileEventHandler(db, hub, mlClient, cfg.EnableQuarantine))
-	http.HandleFunc("/v1/events/process", processEventHandler(db, hub))
+	http.HandleFunc("/v1/events/file", fileEventHandler(db, h, mlClient, cfg.EnableQuarantine))
+	http.HandleFunc("/v1/events/process", processEventHandler(db, h))
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		serveWs(hub, w, r)
+		serveWs(h, w, r)
 	})
 
 	fs := http.FileServer(http.Dir("./static"))
@@ -66,15 +63,14 @@ func main() {
 	}
 }
 
-// fileEventHandler lida com todos os eventos de arquivo recebidos.
-func fileEventHandler(db *database.Database, hub *hub.Hub, mlClient *ml_client.MLClient, enableQuarantine bool) http.HandlerFunc {
+func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLClient, enableQuarantine bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
 			return
 		}
 
-		var event FileEvent
+		var event events.FileEvent
 		if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
 			http.Error(w, "Erro ao decodificar o corpo da requisição", http.StatusBadRequest)
 			return
@@ -126,28 +122,38 @@ func fileEventHandler(db *database.Database, hub *hub.Hub, mlClient *ml_client.M
 			}
 		}
 
-		if err := db.InsertFileEvent(&event); err != nil {
+		_, err = db.InsertFileEvent(
+			event.AgentID,
+			event.Hostname,
+			event.FilePath,
+			event.FileHashSHA256,
+			event.ThreatScore,
+			event.AnalysisFindings,
+			event.IsWhitelisted,
+			event.QuarantinedPath,
+			event.Timestamp,
+		)
+		if err != nil {
 			log.Printf("Erro ao inserir evento de arquivo no banco de dados: %v", err)
 			http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
 			return
 		}
 
 		eventJSON, _ := json.Marshal(event)
-		hub.Broadcast <- eventJSON
+		h.Broadcast <- eventJSON
 
 		w.WriteHeader(http.StatusAccepted)
 	}
 }
 
-// processEventHandler lida com todos os eventos de processo recebidos.
-func processEventHandler(db *database.Database, hub *hub.Hub) http.HandlerFunc {
+func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
 			return
 		}
 
-		var event ProcessEvent
+		var event events.ProcessEvent
 		if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
 			http.Error(w, "Erro ao decodificar o corpo da requisição", http.StatusBadRequest)
 			return
@@ -155,20 +161,30 @@ func processEventHandler(db *database.Database, hub *hub.Hub) http.HandlerFunc {
 
 		log.Printf("Evento de processo recebido de %s: PID=%d, Comando=%s", event.AgentID, event.ProcessID, event.Command)
 
-		if err := db.InsertProcessEvent(&event); err != nil {
+		err := db.InsertProcessEvent(
+			event.AgentID,
+			event.Hostname,
+			event.Command,
+			event.Username,
+			event.ProcessID,
+			event.ParentID,
+			event.ThreatScore,
+			event.Timestamp,
+		)
+		if err != nil {
 			log.Printf("Erro ao inserir evento de processo no banco de dados: %v", err)
 			http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
 			return
 		}
 
 		eventJSON, _ := json.Marshal(event)
-		hub.Broadcast <- eventJSON
+		h.Broadcast <- eventJSON
 
 		w.WriteHeader(http.StatusAccepted)
 	}
 }
 
-func serveWs(hub *hub.Hub, w http.ResponseWriter, r *http.Request) {
+func serveWs(h *hub.Hub, w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
@@ -181,7 +197,7 @@ func serveWs(hub *hub.Hub, w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	client := &hub.Client{Hub: hub, Conn: conn, Send: make(chan []byte, 256)}
+	client := &hub.Client{Hub: h, Conn: conn, Send: make(chan []byte, 256)}
 	client.Hub.Register <- client
 
 	go client.WritePump()
@@ -234,12 +250,4 @@ func quarantineFile(filePath string) (string, error) {
 	}
 
 	return destPath, nil
-}
-
-func getEnvAsInt(name string, defaultValue int) int {
-	valueStr := os.Getenv(name)
-	if value, err := strconv.Atoi(valueStr); err == nil {
-		return value
-	}
-	return defaultValue
 }
