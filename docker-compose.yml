@@ -1,110 +1,108 @@
 version: '3.8'
 
 services:
-  imunno_postgres:
-    image: postgres:14-alpine
-    container_name: imunno_postgres
-    restart: unless-stopped
+  # --- SERVIÇO DO COLETOR (CÉREBRO) ---
+  imunno_collector:
+    build: ./imunno-collector
+    container_name: imunno_collector
+    ports:
+      - "8080:8080"
     environment:
-      POSTGRES_DB: imunno_db
-      POSTGRES_USER: imunno_user
-      POSTGRES_PASSWORD: imunno_password
+      - DB_HOST=imunno_postgres
+      - DB_PORT=5432
+      - DB_USER=imunno_user
+      - DB_PASSWORD=imunno_password
+      - DB_NAME=imunno_db
+      - ML_SERVICE_URL=http://imunno_ml_service:8000
+    depends_on:
+      imunno_postgres:
+        condition: service_healthy
+      imunno_ml_service:
+        condition: service_healthy
+
+  # --- SERVIÇO DO AGENTE (ESPIÃO) ---
+  imunno-agent:
+    build:
+      context: ./imunno-agent
+      dockerfile: Dockerfile
+    container_name: imunno_agent
+    # --- ALTERAÇÕES APLICADAS AQUI ---
+    cap_add:
+      - AUDIT_WRITE
+      - AUDIT_CONTROL
+    environment:
+      - AGENT_ID=wordpress-agent-001
+      - AGENT_WATCH_DIR=/app/wordpress
+      - AGENT_QUARANTINE_DIR=/app/quarantine
+      - COLLECTOR_PORT=8080
+    # --- FIM DAS ALTERAÇÕES ---
     volumes:
-      - ./postgres-data:/var/lib/postgresql/data
-      - ./postgres-init:/docker-entrypoint-initdb.d
+      - ./wordpress:/app/wordpress
+      - ./imunno-agent/quarantine:/app/quarantine
+      - /var/log/audit:/var/log/audit
+    depends_on:
+      - imunno_collector
+      - wordpress_site
+
+  # --- BANCO DE DADOS DO IMUNNO ---
+  imunno_postgres:
+    build:
+      context: ./imunno-postgres
+      dockerfile: Dockerfile
+    container_name: imunno_postgres
+    environment:
+      - POSTGRES_DB=imunno_db
+      - POSTGRES_USER=imunno_user
+      - POSTGRES_PASSWORD=imunno_password
     ports:
       - "5432:5432"
+    volumes:
+      - imunno_db_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U imunno_user -d imunno_db"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  wordpress_db:
-    image: mysql:5.7
-    container_name: wordpress_db
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: root_password
-      MYSQL_DATABASE: wordpress_db
-      MYSQL_USER: wp_user
-      MYSQL_PASSWORD: wp_password
+  # --- SERVIÇO DE MACHINE LEARNING ---
+  imunno_ml_service:
+    build: ./imunno-ml-service
+    container_name: imunno_ml_service
     volumes:
-      - ./mysql-data:/var/lib/mysql
+      - ./imunno-ml-service:/app
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+  # --- AMBIENTE DE TESTE (WORDPRESS) ---
   wordpress_site:
     image: wordpress:latest
     container_name: wordpress_site
-    restart: unless-stopped
     ports:
-      - "8081:80"
+      - "80:80"
     environment:
-      WORDPRESS_DB_HOST: wordpress_db:3306
-      WORDPRESS_DB_USER: wp_user
-      WORDPRESS_DB_PASSWORD: wp_password
-      WORDPRESS_DB_NAME: wordpress_db
+      - WORDPRESS_DB_HOST=wordpress_db
+      - WORDPRESS_DB_USER=wordpress
+      - WORDPRESS_DB_PASSWORD=wordpress
+      - WORDPRESS_DB_NAME=wordpress
     volumes:
       - ./wordpress:/var/www/html
     depends_on:
-      wordpress_db:
-        condition: service_healthy
+      - wordpress_db
 
-  ml-service:
-    build:
-      context: ./imunno-ml-service
-    container_name: imunno_ml_service
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
-  collector:
-    build:
-      context: ./imunno-collector
-    container_name: imunno_collector
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./quarantine_files:/quarantine
-    depends_on:
-      imunno_postgres:
-        condition: service_healthy
-      ml-service:
-        condition: service_healthy
+  wordpress_db:
+    image: mysql:5.7
+    container_name: wordpress_db
     environment:
-      - COLLECTOR_ENABLE_QUARANTINE=false
-      - DB_HOST=imunno_postgres
-      - DB_PORT=5432
-      - DB_USER=imunno_user
-      - DB_PASSWORD=imunno_password
-      - DB_NAME=imunno_db
-      - ML_SERVICE_URL=http://ml-service:8000
-
-  agent:
-    build:
-      context: ./imunno-agent
-    container_name: imunno_agent
-    restart: unless-stopped
-    cap_add:
-      - AUDIT_CONTROL
-      - AUDIT_READ
+      - MYSQL_DATABASE=wordpress
+      - MYSQL_USER=wordpress
+      - MYSQL_PASSWORD=wordpress
+      - MYSQL_ROOT_PASSWORD=supersecretpassword
     volumes:
-      - ./wordpress:/data
-    depends_on:
-      - collector
+      - wordpress_db_data:/var/lib/mysql
 
 volumes:
-  postgres-data:
-  mysql-data:
-  wordpress:
+  imunno_db_data:
+  wordpress_db_data:
