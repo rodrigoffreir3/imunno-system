@@ -1,5 +1,3 @@
-// Arquivo: imunno-collector/database/database.go
-
 package database
 
 import (
@@ -19,9 +17,11 @@ type Database struct {
 
 // New cria um novo pool de conexões com o banco de dados.
 func New(cfg *config.Config) (*Database, error) {
-	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s", cfg.DBUser, cfg.DBPassword, cfg.DBHost, cfg.DBPort, cfg.DBName)
+	if cfg.DBURL == "" {
+		return nil, fmt.Errorf("DB_URL está vazio. Verifique o arquivo .env")
+	}
 
-	pool, err := pgxpool.New(context.Background(), connStr)
+	pool, err := pgxpool.New(context.Background(), cfg.DBURL)
 	if err != nil {
 		return nil, fmt.Errorf("não foi possível criar o pool de conexão: %w", err)
 	}
@@ -73,7 +73,6 @@ func (db *Database) UpdateFileEventThreatScore(id int, newScore int) error {
 
 // FindFileEventByTime busca por um evento de arquivo em um intervalo de tempo.
 func (db *Database) FindFileEventByTime(hostname string, since time.Time) (*FileEvent, error) {
-	// Esta é uma implementação de exemplo. Você pode precisar ajustar os campos retornados.
 	var event FileEvent
 	query := "SELECT id, file_path, threat_score FROM file_events WHERE hostname = $1 AND timestamp >= $2 ORDER BY timestamp DESC LIMIT 1"
 	err := db.Pool.QueryRow(context.Background(), query, hostname, since).Scan(&event.ID, &event.FilePath, &event.ThreatScore)
@@ -84,7 +83,6 @@ func (db *Database) FindFileEventByTime(hostname string, since time.Time) (*File
 }
 
 // FileEvent representa a estrutura de dados para a tabela file_events.
-// É útil ter o tipo aqui para a função FindFileEventByTime.
 type FileEvent struct {
 	ID          int
 	FilePath    string

@@ -1,64 +1,64 @@
+version: '3.9'
+
 services:
+
   postgres:
-    image: postgres:14
-    container_name: imunno-postgres
-    restart: always
+    image: postgres:13
+    container_name: imunno_postgres
     environment:
-      POSTGRES_DB: imunno_db
       POSTGRES_USER: imunno_user
       POSTGRES_PASSWORD: imunno_password
+      POSTGRES_DB: imunno_db
     ports:
       - "5432:5432"
     volumes:
-      - ./postgres-init:/docker-entrypoint-initdb.d
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - imunno-net
 
   collector:
     build: ./imunno-collector
-    container_name: imunno-collector
+    container_name: imunno_collector
+    environment:
+      - DB_URL=postgresql://imunno_user:imunno_password@postgres:5432/imunno_db
     depends_on:
       - postgres
-    ports:
-      - "8080:8080"
-    env_file:
-      - .env
+    networks:
+      - imunno-net
+
+  agent:
+    build: ./imunno-agent
+    container_name: imunno_agent
+    privileged: true
+    volumes:
+      - ./test_files:/data
+      - ./quarantine:/quarantine
+      - ./audit.log:/var/log/audit/audit.log
+    environment:
+      - AGENT_ID=agent-001
+      - COLLECTOR_HOST=collector:8080
+      - AGENT_WATCH_DIR=/data
+      - AGENT_QUARANTINE_DIR=/quarantine
+    depends_on:
+      - collector
     networks:
       - imunno-net
 
   ml-service:
     build: ./imunno-ml-service
-    container_name: imunno-ml-service
-    depends_on:
-      - postgres
+    container_name: imunno_ml
     ports:
-      - "8000:8000"
-    networks:
-      - imunno-net
-
-  imunno_agent:
-    build: ./imunno-agent
-    container_name: imunno-agent
-    depends_on:
-      - collector
-    env_file:
-      - .env
-    volumes:
-      # montar log simulado para ambiente Docker no Windows
-      - ./test_files/audit.log:/var/log/audit/audit.log:ro
+      - "5000:5000"
     networks:
       - imunno-net
 
   simulador:
-    build: ./tools
-    container_name: imunno-simulador
+    build: ./simulador
+    container_name: imunno_simulador
     depends_on:
-      - collector
-    env_file:
-      - .env
+      - agent
     networks:
       - imunno-net
-    command: go run simulador.go -n 10
 
 networks:
   imunno-net:

@@ -1,34 +1,41 @@
-// Arquivo: imunno-collector/config/config.go
-
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 )
 
-// Config armazena todas as configurações da aplicação.
 type Config struct {
-	DBHost           string
-	DBPort           string
-	DBUser           string
-	DBPassword       string
-	DBName           string
+	DBURL            string
 	MLServiceURL     string
 	EnableQuarantine bool
 }
 
-// Load carrega as configurações das variáveis de ambiente.
+// Load lê as variáveis de ambiente e constrói a configuração
 func Load() (*Config, error) {
-	enableQuarantine, _ := strconv.ParseBool(os.Getenv("COLLECTOR_ENABLE_QUARANTINE"))
+	dbURL := os.Getenv("DB_URL")
+	if dbURL == "" {
+		return nil, fmt.Errorf("variável de ambiente DB_URL não definida")
+	}
+
+	mlURL := os.Getenv("ML_SERVICE_URL")
+	if mlURL == "" {
+		mlURL = "http://ml-service:5000/predict" // valor padrão
+	}
+
+	enableQuarantine := false
+	if val := os.Getenv("ENABLE_QUARANTINE"); val != "" {
+		parsed, err := strconv.ParseBool(val)
+		if err != nil {
+			return nil, fmt.Errorf("falha ao converter ENABLE_QUARANTINE: %v", err)
+		}
+		enableQuarantine = parsed
+	}
 
 	return &Config{
-		DBHost:           os.Getenv("DB_HOST"),
-		DBPort:           os.Getenv("DB_PORT"),
-		DBUser:           os.Getenv("DB_USER"),
-		DBPassword:       os.Getenv("DB_PASSWORD"),
-		DBName:           os.Getenv("DB_NAME"),
-		MLServiceURL:     os.Getenv("ML_SERVICE_URL"),
+		DBURL:            dbURL,
+		MLServiceURL:     mlURL,
 		EnableQuarantine: enableQuarantine,
 	}, nil
 }
