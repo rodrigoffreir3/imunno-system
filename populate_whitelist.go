@@ -35,7 +35,7 @@ func main() {
 			// Gera o comando INSERT para a linha atual.
 			// ON CONFLICT... garante que não teremos erros se tentarmos inserir um hash duplicado.
 			fmt.Printf(
-				"INSERT INTO known_good_hashes (file_hash_sha256, software_source, file_name_example) VALUES ('%s', 'WordPress Core', '%s') ON CONFLICT (file_hash_sha256) DO NOTHING;\n",
+				"INSERT INTO known_good_hashes (file_hash_sha256, software_source, file_name) VALUES ('%s', 'WordPress Core', '%s') ON CONFLICT (file_hash_sha256) DO NOTHING;\n",
 				hash,
 				filePath,
 			)

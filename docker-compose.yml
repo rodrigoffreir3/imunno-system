@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: imunno_password
     volumes:
       - ./postgres-data:/var/lib/postgresql/data
-      - ./postgres-init/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./postgres-init:/docker-entrypoint-initdb.d
     ports:
       - "5432:5432"
     healthcheck:
@@ -82,9 +82,8 @@ services:
         condition: service_healthy
       ml-service:
         condition: service_healthy
-    # --- A CORREÇÃO DA INCONSISTÊNCIA ESTÁ AQUI ---
     environment:
-      - COLLECTOR_ENABLE_QUARANTINE=${COLLECTOR_ENABLE_QUARANTINE}
+      - COLLECTOR_ENABLE_QUARANTINE=false
       - DB_HOST=imunno_postgres
       - DB_PORT=5432
       - DB_USER=imunno_user
