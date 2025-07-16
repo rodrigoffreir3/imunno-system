@@ -1,22 +1,49 @@
 package config
 
-import "os"
+import (
+	"fmt"
+	"log"
+	"os"
+
+	"github.com/joho/godotenv"
+)
 
 type Config struct {
-	Agent      struct{ ID, QuarantineDir string }
-	Collector  struct{ HTTP_URL, WebSocket_URL string }
-	Monitoring struct{ WatchDir string }
+	Agent struct {
+		ID            string
+		WatchDir      string
+		QuarantineDir string
+	}
+	Collector struct {
+		WebSocket_URL string
+		HTTP_URL      string
+	}
+	Monitoring struct {
+		WatchDir string
+	}
 }
 
 func LoadConfig() (*Config, error) {
-	cfg := &Config{}
-	cfg.Agent.ID = os.Getenv("AGENT_ID")
-	cfg.Agent.QuarantineDir = os.Getenv("AGENT_QUARANTINE_DIR")
+	err := godotenv.Load()
+	if err != nil {
+		log.Printf("Aviso: não foi possível carregar .env: %v", err)
+	}
 
-	collectorHost := "collector:" + os.Getenv("COLLECTOR_PORT")
-	cfg.Collector.HTTP_URL = "http://" + collectorHost + "/v1/events"
-	cfg.Collector.WebSocket_URL = "ws://" + collectorHost + "/ws"
+	c := &Config{}
 
-	cfg.Monitoring.WatchDir = os.Getenv("AGENT_WATCH_DIR")
-	return cfg, nil
+	c.Agent.ID = os.Getenv("AGENT_ID")
+	c.Agent.WatchDir = os.Getenv("AGENT_WATCH_DIR")
+	c.Agent.QuarantineDir = os.Getenv("AGENT_QUARANTINE_DIR")
+
+	collectorHost := os.Getenv("COLLECTOR_HOST")
+	if collectorHost == "" {
+		collectorHost = "collector:8080"
+	}
+	c.Collector.WebSocket_URL = fmt.Sprintf("ws://%s/ws", collectorHost)
+	c.Collector.HTTP_URL = fmt.Sprintf("http://%s/event", collectorHost)
+
+	// Para reutilização
+	c.Monitoring.WatchDir = c.Agent.WatchDir
+
+	return c, nil
 }
