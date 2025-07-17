@@ -1,4 +1,4 @@
-version: '3.9'
+version: "3.9"
 
 services:
 
@@ -6,59 +6,66 @@ services:
     image: postgres:13
     container_name: imunno_postgres
     environment:
-      POSTGRES_USER: imunno_user
-      POSTGRES_PASSWORD: imunno_password
       POSTGRES_DB: imunno_db
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: imunno_user
+      POSTGRES_PASSWORD: imunno_pass
     volumes:
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - pgdata:/var/lib/postgresql/data
     networks:
       - imunno-net
 
   collector:
-    build: ./imunno-collector
+    build:
+      context: ./imunno-collector
     container_name: imunno_collector
-    environment:
-      - DB_URL=postgresql://imunno_user:imunno_password@postgres:5432/imunno_db
     depends_on:
       - postgres
+    environment:
+      - DB_URL=postgres://imunno_user:imunno_pass@postgres:5432/imunno_db?sslmode=disable
     networks:
       - imunno-net
 
   agent:
-    build: ./imunno-agent
+    build:
+      context: ./imunno-agent
     container_name: imunno_agent
-    privileged: true
-    volumes:
-      - ./test_files:/data
-      - ./quarantine:/quarantine
-      - ./audit.log:/var/log/audit/audit.log
-    environment:
-      - AGENT_ID=agent-001
-      - COLLECTOR_HOST=collector:8080
-      - AGENT_WATCH_DIR=/data
-      - AGENT_QUARANTINE_DIR=/quarantine
     depends_on:
       - collector
+    cap_add:
+      - AUDIT_CONTROL
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - ./imunno-agent/audit.rules:/etc/audit/rules.d/audit.rules
+      - ./imunno-agent/audit.log:/var/log/audit/audit.log
+    environment:
+      - AGENT_ID=agent-001
     networks:
       - imunno-net
 
   ml-service:
-    build: ./imunno-ml-service
+    build:
+      context: ./imunno-ml-service
     container_name: imunno_ml
-    ports:
-      - "5000:5000"
+    volumes:
+      - ./imunno-ml-service:/app
+    environment:
+      - MODEL_PATH=imunno_model.joblib
     networks:
       - imunno-net
 
   simulador:
-    build: ./simulador
+    build:
+      context: ./tools
     container_name: imunno_simulador
     depends_on:
       - agent
     networks:
       - imunno-net
+
+volumes:
+  pgdata:
 
 networks:
   imunno-net:
