@@ -1,20 +1,24 @@
-# Arquivo: imunno-collector/Dockerfile
+# Dockerfile do imunno-collector
+FROM golang:1.21-alpine AS builder
 
-# --- Estágio 1: Builder ---
-FROM golang:1.24-alpine AS builder
-WORKDIR /build-src
-RUN apk add --no-cache git ca-certificates
-COPY . .
-RUN go mod tidy
-RUN CGO_ENABLED=0 GOOS=linux go build -v -o /imunno-collector .
-
-# --- Estágio 2: Final ---
-FROM alpine:latest
 WORKDIR /app
-COPY --from=builder /imunno-collector /app/imunno-collector
 
-# Copiar arquivos estáticos do dashboard, se existirem
-COPY static /app/static
+# Copia os arquivos Go
+COPY . .
 
-EXPOSE 8080
-CMD ["/app/imunno-collector"]
+# Baixa dependências
+RUN go mod tidy
+
+# Compila o binário
+RUN go build -o imunno-collector main.go
+
+# Imagem final minimalista
+FROM alpine:3.18
+
+WORKDIR /app
+
+# Copia o binário do builder
+COPY --from=builder /app/imunno-collector .
+
+# Define o executável padrão
+CMD ["./imunno-collector"]

@@ -1,66 +1,72 @@
-version: "3.9"
-
 services:
-
   postgres:
     image: postgres:13
     container_name: imunno_postgres
+    restart: always
     environment:
-      POSTGRES_DB: imunno_db
       POSTGRES_USER: imunno_user
       POSTGRES_PASSWORD: imunno_pass
+      POSTGRES_DB: imunno_db
+    ports:
+      - "5432:5432"
     volumes:
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
       - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - imunno-net
 
-  collector:
-    build:
-      context: ./imunno-collector
-    container_name: imunno_collector
-    depends_on:
-      - postgres
-    environment:
-      - DB_URL=postgres://imunno_user:imunno_pass@postgres:5432/imunno_db?sslmode=disable
-    networks:
-      - imunno-net
-
-  agent:
-    build:
-      context: ./imunno-agent
-    container_name: imunno_agent
-    depends_on:
-      - collector
-    cap_add:
-      - AUDIT_CONTROL
-    security_opt:
-      - apparmor:unconfined
-    volumes:
-      - ./imunno-agent/audit.rules:/etc/audit/rules.d/audit.rules
-      - ./imunno-agent/audit.log:/var/log/audit/audit.log
-    environment:
-      - AGENT_ID=agent-001
-    networks:
-      - imunno-net
-
-  ml-service:
+  imunno_ml:
     build:
       context: ./imunno-ml-service
     container_name: imunno_ml
+    restart: always
+    ports:
+      - "5000:5000"
     volumes:
-      - ./imunno-ml-service:/app
-    environment:
-      - MODEL_PATH=imunno_model.joblib
+      - ./ml-service:/app
     networks:
       - imunno-net
 
-  simulador:
+  imunno_collector:
+    build:
+      context: ./imunno-collector
+      dockerfile: Dockerfile
+    container_name: imunno_collector
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      DB_URL: postgres://imunno_user:imunno_pass@postgres:5432/imunno_db?sslmode=disable
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./collector:/app
+    networks:
+      - imunno-net
+
+  imunno_agent:
+    build:
+      context: ./imunno-agent
+    container_name: imunno_agent
+    restart: always
+    depends_on:
+      - imunno_collector
+    volumes:
+      - ./audit/audit.log:/var/log/audit/audit.log
+      - ./imunno-agent:/app
+    cap_add:
+      - AUDIT_CONTROL
+      - AUDIT_READ
+    networks:
+      - imunno-net
+
+  imunno_simulador:
     build:
       context: ./tools
     container_name: imunno_simulador
-    depends_on:
-      - agent
+    restart: on-failure
+    volumes:
+      - ./tools:/app
     networks:
       - imunno-net
 
