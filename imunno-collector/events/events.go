@@ -17,6 +17,7 @@ type FileEvent struct {
 	IsWhitelisted    bool      `json:"is_whitelisted"`
 	QuarantinedPath  string    `json:"quarantined_path"`
 	Timestamp        time.Time `json:"timestamp"`
+	Content          string    `json:"content,omitempty"`
 }
 
 // ProcessEvent define a estrutura para todos os eventos relacionados a processos.

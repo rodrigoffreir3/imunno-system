@@ -37,7 +37,7 @@ func LoadConfig() (*Config, error) {
 
 	collectorHost := os.Getenv("COLLECTOR_HOST")
 	if collectorHost == "" {
-		collectorHost = "collector:8080"
+		collectorHost = "imunno_collector:8080"
 	}
 	c.Collector.WebSocket_URL = fmt.Sprintf("ws://%s/ws", collectorHost)
 	c.Collector.HTTP_URL = fmt.Sprintf("http://%s/event", collectorHost)

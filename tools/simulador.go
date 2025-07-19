@@ -27,6 +27,7 @@ type FileEvent struct {
 	IsWhitelisted    bool      `json:"is_whitelisted"`
 	QuarantinedPath  string    `json:"quarantined_path"`
 	Timestamp        time.Time `json:"timestamp"`
+	Content          string    `json:"content,omitempty"`
 }
 
 type ProcessEvent struct {
@@ -62,7 +63,7 @@ func generateMaliciousContent(ext string) string {
 	}
 }
 
-func writeTempMaliciousFile(ext string) (string, string) {
+func writeTempMaliciousFile(ext string) (string, string, string) {
 	filePath := fmt.Sprintf("/tmp/simulacao_%d.%s", rand.Intn(99999), ext)
 	content := generateMaliciousContent(ext)
 	_ = os.WriteFile(filePath, []byte(content), 0644)
@@ -70,11 +71,11 @@ func writeTempMaliciousFile(ext string) (string, string) {
 	hash := sha256.Sum256([]byte(content))
 	hashStr := hex.EncodeToString(hash[:])
 
-	return filePath, hashStr
+	return filePath, hashStr, content
 }
 
 func sendFileEvent(ext string) {
-	filePath, hash := writeTempMaliciousFile(ext)
+	filePath, hash, content := writeTempMaliciousFile(ext)
 	defer os.Remove(filePath)
 
 	payload := FileEvent{
@@ -86,10 +87,11 @@ func sendFileEvent(ext string) {
 		AnalysisFindings: []byte(`[]`),
 		IsWhitelisted:    false,
 		Timestamp:        time.Now(),
+		Content:          content,
 	}
 
 	jsonData, _ := json.Marshal(payload)
-	resp, err := http.Post("http://localhost:8080/v1/events/file", "application/json", bytes.NewBuffer(jsonData))
+	resp, err := http.Post("http://imunno_collector:8080/v1/events/file", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		log.Printf("[ERRO] Arquivo %s: %v", filePath, err)
 		return
@@ -121,7 +123,7 @@ func sendProcessEvent() {
 	}
 
 	jsonData, _ := json.Marshal(payload)
-	resp, err := http.Post("http://localhost:8080/v1/events/process", "application/json", bytes.NewBuffer(jsonData))
+	resp, err := http.Post("http://imunno_collector:8080/v1/events/process", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		log.Printf("[ERRO] Processo %s: %v", cmd, err)
 		return

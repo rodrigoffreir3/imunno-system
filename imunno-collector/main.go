@@ -2,12 +2,8 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -88,14 +84,14 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 			log.Printf("Arquivo %s (%s) está na whitelist. Ignorando análise.", event.FilePath, event.FileHashSHA256)
 			event.ThreatScore = 0
 		} else {
-			content, err := os.ReadFile(event.FilePath)
-			if err != nil {
-				log.Printf("Erro ao ler o arquivo %s para análise: %v", event.FilePath, err)
+			if event.Content == "" {
+				log.Printf("Evento de arquivo %s não contém conteúdo para análise.", event.FilePath)
+				event.ThreatScore = 0 // Ou alguma pontuação padrão
 			} else {
-				event.ThreatScore, event.AnalysisFindings = analyzer.AnalyzeContent(content)
+				event.ThreatScore, event.AnalysisFindings = analyzer.AnalyzeContent([]byte(event.Content))
 				log.Printf("Análise heurística concluída para %s. Pontuação de ameaça: %d", event.FilePath, event.ThreatScore)
 
-				fileSize, _ := getFileSize(event.FilePath)
+				fileSize := len(event.Content) // Calcula o tamanho a partir do comprimento do conteúdo
 				isPHP := strings.HasSuffix(strings.ToLower(event.FilePath), ".php")
 				isJS := strings.HasSuffix(strings.ToLower(event.FilePath), ".js")
 
@@ -112,21 +108,14 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 			}
 		}
 
-		if enableQuarantine && event.ThreatScore >= 40 {
-			quarantinedPath, err := quarantineFile(event.FilePath)
-			if err != nil {
-				log.Printf("FALHA AO COLOCAR EM QUARENTENA o arquivo %s: %v", event.FilePath, err)
-			} else {
-				log.Printf("SUCESSO: Arquivo %s movido para quarentena em %s", event.FilePath, quarantinedPath)
-				event.QuarantinedPath = quarantinedPath
-			}
-		}
+		
 
-		_, err = db.InsertFileEvent(
+				_, err = db.InsertFileEvent(
 			event.AgentID,
 			event.Hostname,
 			event.FilePath,
 			event.FileHashSHA256,
+			event.Content,
 			event.ThreatScore,
 			event.AnalysisFindings,
 			event.IsWhitelisted,
@@ -204,50 +193,4 @@ func serveWs(h *hub.Hub, w http.ResponseWriter, r *http.Request) {
 	go client.ReadPump()
 }
 
-func getFileSize(filePath string) (int, error) {
-	fileInfo, err := os.Stat(filePath)
-	if err != nil {
-		return 0, err
-	}
-	return int(fileInfo.Size()), nil
-}
 
-func quarantineFile(filePath string) (string, error) {
-	quarantineDir := "/quarantine"
-	if _, err := os.Stat(quarantineDir); os.IsNotExist(err) {
-		if err := os.MkdirAll(quarantineDir, 0755); err != nil {
-			return "", fmt.Errorf("não foi possível criar o diretório de quarentena: %w", err)
-		}
-	}
-
-	sourceFile, err := os.Open(filePath)
-	if err != nil {
-		return "", fmt.Errorf("não foi possível abrir o arquivo de origem: %w", err)
-	}
-	defer sourceFile.Close()
-
-	fileName := filepath.Base(filePath)
-	timestamp := time.Now().Unix()
-	destFileName := fmt.Sprintf("%d_%s.infected", timestamp, fileName)
-	destPath := filepath.Join(quarantineDir, destFileName)
-
-	destFile, err := os.Create(destPath)
-	if err != nil {
-		return "", fmt.Errorf("não foi possível criar o arquivo de destino na quarentena: %w", err)
-	}
-	defer destFile.Close()
-
-	_, err = io.Copy(destFile, sourceFile)
-	if err != nil {
-		return "", fmt.Errorf("não foi possível copiar o arquivo para a quarentena: %w", err)
-	}
-
-	sourceFile.Close()
-
-	err = os.Remove(filePath)
-	if err != nil {
-		return "", fmt.Errorf("não foi possível remover o arquivo original após a quarentena: %w", err)
-	}
-
-	return destPath, nil
-}

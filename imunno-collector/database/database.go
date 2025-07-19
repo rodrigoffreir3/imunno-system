@@ -48,11 +48,11 @@ func (db *Database) IsHashWhitelisted(hash string) (bool, error) {
 }
 
 // InsertFileEvent insere um novo evento de arquivo no banco de dados.
-func (db *Database) InsertFileEvent(agentID, hostname, filePath, fileHash string, threatScore int, findings []byte, isWhitelisted bool, quarantinedPath string, timestamp time.Time) (int, error) {
+func (db *Database) InsertFileEvent(agentID, hostname, filePath, fileHash, fileContent string, threatScore int, findings []byte, isWhitelisted bool, quarantinedPath string, timestamp time.Time) (int, error) {
 	var eventID int
-	query := `INSERT INTO file_events (agent_id, hostname, file_path, file_hash_sha256, threat_score, analysis_findings, is_whitelisted, quarantined_path, timestamp)
-	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`
-	err := db.Pool.QueryRow(context.Background(), query, agentID, hostname, filePath, fileHash, threatScore, findings, isWhitelisted, quarantinedPath, timestamp).Scan(&eventID)
+	query := `INSERT INTO file_events (agent_id, hostname, file_path, file_hash_sha256, file_content, threat_score, analysis_findings, is_whitelisted, quarantined_path, timestamp)
+	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`
+	err := db.Pool.QueryRow(context.Background(), query, agentID, hostname, filePath, fileHash, fileContent, threatScore, findings, isWhitelisted, quarantinedPath, timestamp).Scan(&eventID)
 	return eventID, err
 }
 
