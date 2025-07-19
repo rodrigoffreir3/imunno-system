@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   postgres:
     image: postgres:13
@@ -5,20 +7,20 @@ services:
     restart: always
     environment:
       POSTGRES_USER: imunno_user
-      POSTGRES_PASSWORD: imunno_pass
+      POSTGRES_PASSWORD: imunno_pass # Using your password
       POSTGRES_DB: imunno_db
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./imunno-postgres/init.sql:/docker-entrypoint-initdb.d/init.sql # Corrected path to init.sql
     networks:
       - imunno-net
 
   imunno_ml:
     build:
       context: ./imunno-ml-service
-    container_name: imunno_ml    
+    container_name: imunno_ml
     restart: always
     ports:
       - "5000:5000"
@@ -29,18 +31,20 @@ services:
 
   imunno_collector:
     build:
-      context: ./imunno-collector
-      dockerfile: Dockerfile
+      context: ./imunno-collector # Corrected path
     container_name: imunno_collector
     restart: always
     depends_on:
       - postgres
+      - imunno_ml # Added dependency on the ML service
     environment:
-      DB_URL: postgres://imunno_user:imunno_pass@postgres:5432/imunno_db?sslmode=disable
+      # This DB_URL matches your postgres service credentials
+      DB_URL: "postgres://imunno_user:imunno_pass@postgres:5432/imunno_db?sslmode=disable"
+      ML_SERVICE_URL: "http://imunno_ml:5000" # Added ML service URL
     ports:
       - "8080:8080"
     volumes:
-      - ./collector:/app
+      - ./imunno-collector:/app # Corrected path
     networks:
       - imunno-net
 
@@ -51,22 +55,28 @@ services:
     restart: always
     depends_on:
       - imunno_collector
+    environment:
+      # Added environment variables the agent needs to connect
+      COLLECTOR_URL: "ws://imunno_collector:8080/ws"
+      AGENT_ID: "agent-001"
     volumes:
+      # This volume is for local testing, it's good.
       - ./audit/audit.log:/var/log/audit/audit.log
       - ./imunno-agent:/app
     cap_add:
+      # AUDIT_WRITE is essential for the daemon to operate correctly
+      - AUDIT_WRITE
       - AUDIT_CONTROL
-      - AUDIT_READ
     networks:
       - imunno-net
 
   imunno_simulador:
     build:
-      context: ./tools
+      context: ./imunno-simulador # Corrected path
     container_name: imunno_simulador
     restart: on-failure
     volumes:
-      - ./tools:/app
+      - ./imunno-simulador:/app # Corrected path
     networks:
       - imunno-net
 

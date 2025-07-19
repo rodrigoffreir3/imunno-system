@@ -1,19 +1,41 @@
-# Arquivo: imunno-agent/Dockerfile
-FROM golang:1.24-alpine AS builder
+# Estágio 1: O Construtor (Builder)
+# Usa uma imagem base atualizada do Go
+FROM golang:1.24-alpine as builder
+
+# Define o diretório de trabalho
 WORKDIR /app
-RUN apk add --no-cache git ca-certificates audit
+
+# Instala o 'audit' e suas dependências, necessário para o monitoramento
+RUN apk add --no-cache audit
+
+# Copia os arquivos de gerenciamento de dependências
+COPY go.mod go.sum ./
+
+# Baixa as dependências
+RUN go mod download
+
+# Copia todo o código-fonte da aplicação
 COPY . .
-RUN go mod tidy
-RUN CGO_ENABLED=0 GOOS=linux go build -v -o /app/imunno-agent .
 
+# Compila a aplicação Go
+RUN go build -o imunno-agent
+
+
+# Estágio 2: A imagem final começa a partir de uma base Alpine limpa
 FROM alpine:latest
+
+# Instala apenas o 'audit', que é a única dependência de runtime
+RUN apk add --no-cache audit
+
+# Define o diretório de trabalho
 WORKDIR /app
-RUN apk add --no-cache audit shadow
+
+# Copia o script de entrypoint e o executável compilado do estágio 'builder'
+COPY --from=builder /app/entrypoint.sh .
 COPY --from=builder /app/imunno-agent .
-COPY entrypoint.sh .
 
-# Garantir que o log exista com permissões adequadas
-RUN mkdir -p /var/log/audit && touch /var/log/audit/audit.log && chmod 640 /var/log/audit/audit.log
+# Garante que o script de entrypoint seja executável
+RUN chmod +x ./entrypoint.sh
 
-RUN chmod +x /app/entrypoint.sh
-ENTRYPOINT ["./entrypoint.sh"]
+# Define o entrypoint que iniciará o auditd e depois o agente.
+ENTRYPOINT ["/app/entrypoint.sh"]
