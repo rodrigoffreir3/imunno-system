@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   postgres:
     image: postgres:13
@@ -5,13 +7,13 @@ services:
     restart: always
     environment:
       POSTGRES_USER: imunno_user
-      POSTGRES_PASSWORD: imunno_pass
+      POSTGRES_PASSWORD: imunno_pass # Using your password
       POSTGRES_DB: imunno_db
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./imunno-postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - imunno-net
 
@@ -30,17 +32,17 @@ services:
   imunno_collector:
     build:
       context: ./imunno-collector
+      dockerfile: Dockerfile
     container_name: imunno_collector
     restart: always
     depends_on:
       - postgres
-      - imunno_ml
     environment:
-      # CORREÇÃO: Revertido para usar DB_URL, como o seu código Go espera.
-      DB_URL: "postgres://imunno_user:imunno_pass@postgres:5432/imunno_db?sslmode=disable"
-      ML_SERVICE_URL: "http://imunno_ml:5000"
+      DB_URL: postgres://imunno_user:imunno_pass@postgres:5432/imunno_db?sslmode=disable
     ports:
       - "8080:8080"
+    volumes:
+      - ./collector:/app
     networks:
       - imunno-net
 
@@ -51,28 +53,21 @@ services:
     restart: always
     depends_on:
       - imunno_collector
-    environment:
-      COLLECTOR_URL: "ws://imunno_collector:8080/ws"
-      AGENT_ID: "docker-agent-001"
-      AGENT_WATCH_DIR: "/var/log/audit"
-      AGENT_QUARANTINE_DIR: "/app/quarantine"
     volumes:
+      # This volume is for local testing, it's good.
       - ./audit/audit.log:/var/log/audit/audit.log
     cap_add:
-      - AUDIT_WRITE
       - AUDIT_CONTROL
     networks:
       - imunno-net
 
   imunno_simulador:
     build:
-      context: ./tools
+      context: ./imunno-simulador # Corrected path
     container_name: imunno_simulador
     restart: on-failure
-    depends_on:
-      - imunno_collector
-    environment:
-        COLLECTOR_URL: "http://imunno_collector:8080"
+    volumes:
+      - ./tools:/app
     networks:
       - imunno-net
 
