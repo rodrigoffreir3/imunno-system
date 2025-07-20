@@ -1,3 +1,5 @@
+# Arquivo: docker-compose.yml (Corrigido)
+
 services:
   postgres:
     image: postgres:13
@@ -11,7 +13,8 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./postgres-init/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # CORREÇÃO: O caminho agora aponta para o ARQUIVO, não para a pasta.
+      - ./imunno-postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - imunno-net
 
@@ -72,7 +75,6 @@ services:
       - imunno_collector
     environment:
         COLLECTOR_URL: "http://imunno_collector:8080"
-    # A LINHA DE VOLUME FOI REMOVIDA DAQUI PARA RESOLVER O ERRO
     networks:
       - imunno-net
 

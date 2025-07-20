@@ -1,15 +1,21 @@
-# Dockerfile para o serviço imunno-ml-service
+# Usa uma imagem base leve para Python
 FROM python:3.11-slim
 
-# Diretório de trabalho
+# Define o diretório de trabalho dentro do container
 WORKDIR /app
 
-# Copia e instala as dependências
+# Copia o arquivo de requisitos para o diretório de trabalho
 COPY requirements.txt .
+
+# --- CORREÇÃO APLICADA AQUI ---
+# Instala as dependências Python listadas no requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia o restante dos arquivos da aplicação
+# Copia todo o restante do código da aplicação para o diretório de trabalho
 COPY . .
 
-# Comando para iniciar o servidor FastAPI
+# Expõe a porta que a aplicação FastAPI/Uvicorn usará
+EXPOSE 5000
+
+# Comando para iniciar o servidor Uvicorn quando o container iniciar
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000"]
