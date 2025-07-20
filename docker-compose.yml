@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:13
@@ -7,13 +5,13 @@ services:
     restart: always
     environment:
       POSTGRES_USER: imunno_user
-      POSTGRES_PASSWORD: imunno_pass # Using your password
+      POSTGRES_PASSWORD: imunno_pass
       POSTGRES_DB: imunno_db
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./postgres-init/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - imunno-net
 
@@ -32,17 +30,16 @@ services:
   imunno_collector:
     build:
       context: ./imunno-collector
-      dockerfile: Dockerfile
     container_name: imunno_collector
     restart: always
     depends_on:
       - postgres
+      - imunno_ml
     environment:
-      DB_URL: postgres://imunno_user:imunno_pass@postgres:5432/imunno_db?sslmode=disable
+      DB_URL: "postgres://imunno_user:imunno_pass@postgres:5432/imunno_db?sslmode=disable"
+      ML_SERVICE_URL: "http://imunno_ml:5000"
     ports:
       - "8080:8080"
-    volumes:
-      - ./collector:/app
     networks:
       - imunno-net
 
@@ -53,21 +50,29 @@ services:
     restart: always
     depends_on:
       - imunno_collector
+    environment:
+      COLLECTOR_URL: "ws://imunno_collector:8080/ws"
+      AGENT_ID: "docker-agent-001"
+      AGENT_WATCH_DIR: "/var/log/audit"
+      AGENT_QUARANTINE_DIR: "/app/quarantine"
     volumes:
-      # This volume is for local testing, it's good.
       - ./audit/audit.log:/var/log/audit/audit.log
     cap_add:
+      - AUDIT_WRITE
       - AUDIT_CONTROL
     networks:
       - imunno-net
 
   imunno_simulador:
     build:
-      context: ./imunno-simulador # Corrected path
+      context: ./tools
     container_name: imunno_simulador
     restart: on-failure
-    volumes:
-      - ./tools:/app
+    depends_on:
+      - imunno_collector
+    environment:
+        COLLECTOR_URL: "http://imunno_collector:8080"
+    # A LINHA DE VOLUME FOI REMOVIDA DAQUI PARA RESOLVER O ERRO
     networks:
       - imunno-net
 

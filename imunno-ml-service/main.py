@@ -1,87 +1,73 @@
-# Arquivo: imunno-ml-service/main.py
+# Arquivo: imunno-ml-service/main.py (Corrigido)
 
 import joblib
 import pandas as pd
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 import logging
-import os
 
 # Configuração do logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
-# --- Modelos de Dados (Contrato da API) ---
-class EventData(BaseModel):
-    threat_score: int = Field(..., alias="threat_score")
-    file_size: int = Field(..., alias="file_size")
-    is_php: bool = Field(..., alias="is_php")
-    is_js: bool = Field(..., alias="is_js")
+# Define o modelo de dados para a requisição de predição
+class PredictionRequest(BaseModel):
+    threat_score: int
+    file_size: int
+    is_php: bool
+    is_js: bool
 
-class PredictionResponse(BaseModel):
-    is_anomaly: bool
-    confidence: float
+# Carrega o modelo de IA treinado
+try:
+    model = joblib.load('imunno_model.joblib')
+    log.info("Modelo de IA carregado com sucesso de 'imunno_model.joblib'")
+except FileNotFoundError:
+    log.warning("AVISO: Arquivo do modelo 'imunno_model.joblib' não encontrado. O serviço iniciará sem capacidade de predição.")
+    model = None
 
-# --- Inicialização do Aplicativo e Carregamento do Modelo ---
 app = FastAPI()
-
-MODEL_PATH = os.getenv("MODEL_PATH", "imunno_model.joblib")
-model = None
-
-@app.on_event("startup")
-def load_model():
-    """
-    Função executada na inicialização do serviço para carregar o modelo de IA.
-    Agora, ela lida graciosamente com a ausência do arquivo do modelo.
-    """
-    global model
-    try:
-        # Verifica se o arquivo do modelo existe ANTES de tentar carregá-lo.
-        if os.path.exists(MODEL_PATH):
-            model = joblib.load(MODEL_PATH)
-            logger.info(f"Modelo de IA carregado com sucesso de '{MODEL_PATH}'")
-        else:
-            # Se o arquivo não existe, apenas registra um aviso. A aplicação continuará funcionando.
-            logger.warning(f"AVISO: Arquivo do modelo '{MODEL_PATH}' não encontrado. O serviço iniciará sem capacidade de predição.")
-            model = None
-    except Exception as e:
-        logger.error(f"ERRO CRÍTICO: Falha inesperada ao tentar carregar o modelo de IA: {e}")
-        model = None
-
-# --- Endpoints da API ---
 
 @app.get("/health")
 def health_check():
-    """Endpoint de verificação de saúde."""
-    if model is not None:
-        return {"status": "ok", "model_loaded": True}
-    return {"status": "warning", "model_loaded": False, "message": "O serviço está rodando, mas o modelo de IA não está carregado."}
+    """Verifica a saúde do serviço."""
+    return {"status": "ok", "model_loaded": model is not None}
 
-@app.post("/predict", response_model=PredictionResponse)
-def predict(event_data: EventData):
-    """Endpoint principal para fazer previsões de anomalia."""
-    # Se o modelo não foi carregado, retorna um erro 503 (Serviço Indisponível)
-    # informando que a capacidade de predição não está ativa.
+@app.post("/predict")
+def predict(request: PredictionRequest):
+    """Executa a predição com base nos dados recebidos."""
     if model is None:
-        logger.error("Tentativa de predição falhou porque o modelo não está carregado.")
-        raise HTTPException(status_code=503, detail="Serviço indisponível: Modelo de IA não carregado.")
+        raise HTTPException(status_code=503, detail="Modelo de IA não está carregado.")
 
     try:
-        feature_order = ['threat_score', 'file_size', 'is_php', 'is_js']
-        data_dict = event_data.dict()
-        df = pd.DataFrame([data_dict])
-        df = df[feature_order]
+        # Cria um DataFrame do pandas com os dados da requisição
+        # Os nomes das colunas devem corresponder aos usados no treinamento
+        feature_names = ['threat_score', 'file_size', 'is_php', 'is_js']
+        df = pd.DataFrame([request.dict()], columns=feature_names)
 
-        prediction_result = model.predict(df.values)
-        prediction_proba = model.predict_proba(df.values)
+        # --- CORREÇÃO APLICADA AQUI ---
+        # O modelo IsolationForest não tem 'predict_proba'.
+        # Usamos 'predict' para obter a classificação (-1 para anomalia, 1 para normal)
+        # e 'decision_function' para obter um score de confiança.
 
-        is_anomaly = bool(prediction_result[0] == -1)
-        confidence = float(prediction_proba.max())
+        prediction = model.predict(df.values)
+        score = model.decision_function(df.values)
 
-        logger.info(f"Predição: Anomalia={is_anomaly}, Confiança={confidence:.4f}")
+        # Converte o resultado para um formato mais legível
+        # Se a predição for -1, é uma anomalia.
+        is_anomaly = bool(prediction[0] == -1)
+        
+        # O score de 'decision_function' é negativo para anomalias.
+        # Podemos usar uma lógica para convertê-lo em uma "confiança" de 0 a 1,
+        # mas por simplicidade, vamos retornar o score bruto.
+        confidence = float(score[0])
 
-        return PredictionResponse(is_anomaly=is_anomaly, confidence=confidence)
+        log.info(f"Predição executada: Anomalia={is_anomaly}, Score={confidence:.4f}")
+
+        return {
+            "is_anomaly": is_anomaly,
+            "confidence": confidence
+        }
 
     except Exception as e:
-        logger.error(f"Erro durante a execução da predição: {e}", exc_info=True)
+        log.error(f"Erro durante a execução da predição: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erro interno no processamento da predição: {e}")
