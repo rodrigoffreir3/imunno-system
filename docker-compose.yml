@@ -1,5 +1,3 @@
-# Arquivo: docker-compose.yml (Corrigido)
-
 services:
   postgres:
     image: postgres:13
@@ -13,8 +11,8 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # CORREÇÃO: O caminho agora aponta para o ARQUIVO, não para a pasta.
-      - ./imunno-postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # A CORREÇÃO ESTÁ AQUI: O caminho agora aponta para o script na raiz.
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - imunno-net
 
