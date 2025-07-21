@@ -5,14 +5,13 @@ services:
     restart: always
     environment:
       POSTGRES_USER: imunno_user
-      POSTGRES_PASSWORD: imunno_pass
+      POSTG-RES_PASSWORD: imunno_pass
       POSTGRES_DB: imunno_db
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # A CORREÇÃO ESTÁ AQUI: O caminho agora aponta para o script na raiz.
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./postgres-init/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - imunno-net
 
@@ -68,6 +67,20 @@ services:
     build:
       context: ./tools
     container_name: imunno_simulador
+    restart: on-failure
+    depends_on:
+      - imunno_collector
+    environment:
+        COLLECTOR_URL: "http://imunno_collector:8080"
+    networks:
+      - imunno-net
+
+  # --- NOVO SERVIÇO ADICIONADO AQUI ---
+  imunno_simulador_bem:
+    build:
+      # Aponta para a nova pasta dedicada
+      context: ./tools/simulador-bem
+    container_name: imunno_simulador_bem
     restart: on-failure
     depends_on:
       - imunno_collector
