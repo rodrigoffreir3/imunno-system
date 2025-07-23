@@ -1,21 +1,21 @@
--- Este script é executado automaticamente na primeira vez que o contêiner do PostgreSQL é criado.
--- Ele define o esquema inicial completo e correto do nosso banco de dados 'imunno_db'.
+-- Arquivo: postgres-init/init.sql (Corrigido e Completo)
 
--- Tabela para armazenar eventos de arquivo detectados pelo agente.
+-- Criação da tabela para eventos de arquivo
 CREATE TABLE IF NOT EXISTS file_events (
     id SERIAL PRIMARY KEY,
     agent_id VARCHAR(255) NOT NULL,
     hostname VARCHAR(255) NOT NULL,
     file_path TEXT NOT NULL,
-    file_hash_sha256 VARCHAR(64) NOT NULL,
-    threat_score INT DEFAULT 0,
+    file_hash_sha256 VARCHAR(64),
+    file_content TEXT,
+    threat_score INT,
     analysis_findings JSONB,
     is_whitelisted BOOLEAN DEFAULT FALSE,
     quarantined_path TEXT,
     timestamp TIMESTAMPTZ NOT NULL
 );
 
--- Tabela para armazenar eventos de processo detectados pelo agente.
+-- Criação da tabela para eventos de processo
 CREATE TABLE IF NOT EXISTS process_events (
     id SERIAL PRIMARY KEY,
     agent_id VARCHAR(255) NOT NULL,
@@ -28,23 +28,18 @@ CREATE TABLE IF NOT EXISTS process_events (
     timestamp TIMESTAMPTZ NOT NULL
 );
 
--- Tabela para armazenar hashes de arquivos conhecidos e seguros (Whitelist).
--- Adicionando a criação desta tabela ao script de inicialização para garantir que ela sempre exista.
+-- --- CORREÇÃO APLICADA AQUI ---
+-- Criação da tabela para hashes conhecidos (whitelist) com a estrutura correta
 CREATE TABLE IF NOT EXISTS known_good_hashes (
     id SERIAL PRIMARY KEY,
     file_hash_sha256 VARCHAR(64) NOT NULL UNIQUE,
-    file_name VARCHAR(255),
-    software_source VARCHAR(100), -- Ex: 'WordPress 6.5.5', 'Joomla 5.2.1'
+    file_name VARCHAR(255), -- Coluna que estava faltando
+    software_source VARCHAR(100), -- Coluna que estava faltando
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Cria índices para buscas ultra-rápidas.
+-- Criação do índice para a whitelist
 CREATE INDEX IF NOT EXISTS idx_known_good_hashes_hash ON known_good_hashes(file_hash_sha256);
 
--- Garante que nosso usuário 'imunno_user' seja o dono das tabelas.
-ALTER TABLE file_events OWNER TO imunno_user;
-ALTER TABLE process_events OWNER TO imunno_user;
-ALTER TABLE known_good_hashes OWNER TO imunno_user;
-
--- Mensagem de sucesso para o log do Docker.
-SELECT 'Banco de dados imunno_db e todas as tabelas iniciais criados com sucesso!';
+-- Mensagem de sucesso para os logs
+SELECT 'Banco de dados imunno_db e todas as tabelas iniciais criados com sucesso!' as "Status";
