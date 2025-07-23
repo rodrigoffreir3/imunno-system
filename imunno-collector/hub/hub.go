@@ -1,9 +1,10 @@
-// Arquivo: imunno-collector/hub/hub.go
+// Arquivo: imunno-collector/hub/hub.go (Corrigido e Aprimorado)
 
 package hub
 
 import (
 	"imunno-collector/database"
+	"log"
 )
 
 // Hub mantém o conjunto de clientes ativos e difunde mensagens para eles.
@@ -32,10 +33,12 @@ func (h *Hub) Run() {
 		select {
 		case client := <-h.Register:
 			h.Clients[client] = true
+			log.Printf("Agente %s conectado.", client.AgentID)
 		case client := <-h.Unregister:
 			if _, ok := h.Clients[client]; ok {
 				delete(h.Clients, client)
 				close(client.Send)
+				log.Printf("Agente %s desconectado.", client.AgentID)
 			}
 		case message := <-h.Broadcast:
 			for client := range h.Clients {
@@ -48,4 +51,21 @@ func (h *Hub) Run() {
 			}
 		}
 	}
+}
+
+// --- FUNÇÃO ADICIONADA AQUI ---
+// SendCommandToAgent encontra um cliente específico pelo ID e envia uma mensagem.
+func (h *Hub) SendCommandToAgent(agentID string, message []byte) {
+	for client := range h.Clients {
+		if client.AgentID == agentID {
+			select {
+			case client.Send <- message:
+				log.Printf("Comando enviado com sucesso para o agente %s.", agentID)
+			default:
+				log.Printf("AVISO: Canal do agente %s está cheio. O comando pode não ter sido enviado.", agentID)
+			}
+			return // Retorna após encontrar e enviar para o agente
+		}
+	}
+	log.Printf("AVISO: Tentativa de enviar comando para o agente %s, mas ele não foi encontrado.", agentID)
 }

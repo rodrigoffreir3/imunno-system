@@ -32,3 +32,9 @@ type ProcessEvent struct {
 	Username    string    `json:"username"`
 	ThreatScore int       `json:"threat_score"`
 }
+
+// CommandMessage define a estrutura para um comando enviado do collector para o agent.
+type CommandMessage struct {
+	Action  string            `json:"action"`
+	Payload map[string]string `json:"payload"`
+}

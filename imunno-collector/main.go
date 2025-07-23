@@ -78,20 +78,17 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 		if err != nil {
 			log.Printf("Erro ao verificar whitelist para o hash %s: %v", event.FileHashSHA256, err)
 		}
-
 		event.IsWhitelisted = isWhitelisted
+
 		if isWhitelisted {
 			log.Printf("Arquivo %s (%s) está na whitelist. Ignorando análise.", event.FilePath, event.FileHashSHA256)
 			event.ThreatScore = 0
 		} else {
-			if event.Content == "" {
-				log.Printf("Evento de arquivo %s não contém conteúdo para análise.", event.FilePath)
-				event.ThreatScore = 0 // Ou alguma pontuação padrão
-			} else {
+			if event.Content != "" {
 				event.ThreatScore, event.AnalysisFindings = analyzer.AnalyzeContent([]byte(event.Content))
-				log.Printf("Análise heurística concluída para %s. Pontuação de ameaça: %d", event.FilePath, event.ThreatScore)
+				log.Printf("Análise heurística concluída para %s. Pontuação de ameaça inicial: %d", event.FilePath, event.ThreatScore)
 
-				fileSize := len(event.Content) // Calcula o tamanho a partir do comprimento do conteúdo
+				fileSize := len(event.Content)
 				isPHP := strings.HasSuffix(strings.ToLower(event.FilePath), ".php")
 				isJS := strings.HasSuffix(strings.ToLower(event.FilePath), ".js")
 
@@ -100,17 +97,33 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 					log.Printf("Erro ao chamar o serviço de ML: %v", err)
 				} else {
 					log.Printf("Predição da IA: Anomalia=%t, Confiança=%.2f", prediction.IsAnomaly, prediction.Confidence)
-					if prediction.IsAnomaly && prediction.Confidence > 0.75 {
-						event.ThreatScore += 20
-						log.Printf("Pontuação de ameaça aumentada pela IA para %d", event.ThreatScore)
+					if prediction.IsAnomaly {
+						log.Printf("IA DETECTOU ANOMALIA. Elevando a pontuação de ameaça.")
+						event.ThreatScore = 95
 					}
 				}
+			} else {
+				log.Printf("Evento de arquivo %s não contém conteúdo para análise.", event.FilePath)
+				event.ThreatScore = 0
 			}
 		}
 
-		
+		// A lógica de quarentena agora é executada após toda a análise.
+		if enableQuarantine && event.ThreatScore >= 70 {
+			log.Printf("AMEAÇA CRÍTICA DETECTADA [Score: %d] para o arquivo %s. Enviando comando de quarentena para o agente %s.", event.ThreatScore, event.FilePath, event.AgentID)
 
-				_, err = db.InsertFileEvent(
+			quarantineCommand := events.CommandMessage{
+				Action: "quarantine",
+				Payload: map[string]string{
+					"file_path": event.FilePath,
+				},
+			}
+
+			commandJSON, _ := json.Marshal(quarantineCommand)
+			h.SendCommandToAgent(event.AgentID, commandJSON)
+		}
+
+		_, err = db.InsertFileEvent(
 			event.AgentID,
 			event.Hostname,
 			event.FilePath,
@@ -186,11 +199,17 @@ func serveWs(h *hub.Hub, w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	client := &hub.Client{Hub: h, Conn: conn, Send: make(chan []byte, 256)}
+
+	// Lê o agent_id dos parâmetros da URL para identificar o cliente
+	agentID := r.URL.Query().Get("agent_id")
+	if agentID == "" {
+		log.Println("AVISO: Conexão WebSocket recebida sem agent_id.")
+		agentID = "unknown"
+	}
+
+	client := &hub.Client{Hub: h, Conn: conn, Send: make(chan []byte, 256), AgentID: agentID}
 	client.Hub.Register <- client
 
 	go client.WritePump()
 	go client.ReadPump()
 }
-
-
