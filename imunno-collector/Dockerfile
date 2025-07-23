@@ -1,20 +1,28 @@
-# Usa uma imagem base leve e atualizada para Go
-FROM golang:1.24-alpine
+# Estágio 1: Build - Usa a imagem completa do Go para compilar
+FROM golang:1.24-alpine AS builder
 
-# Define o diretório de trabalho dentro do container
 WORKDIR /app
 
-# Copia os arquivos de gerenciamento de dependências primeiro para otimizar o cache
 COPY go.mod go.sum ./
-
-# Baixa as dependências
 RUN go mod download
 
-# Copia todo o código-fonte da aplicação
 COPY . .
 
-# Compila a aplicação Go, criando um executável no WORKDIR.
-RUN go build -o imunno-collector
+# Compila a aplicação de forma estática para não ter dependências externas
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o imunno-collector .
 
-# O comando para executar a aplicação quando o container iniciar, usando o caminho absoluto.
-CMD ["/app/imunno-collector"]
+# ---
+
+# Estágio 2: Final - Usa uma imagem Alpine minúscula
+FROM alpine:latest
+
+WORKDIR /app
+
+# Copia APENAS o executável compilado do estágio 'builder'
+COPY --from=builder /app/imunno-collector .
+
+# Expõe a porta que o collector usa
+EXPOSE 8080
+
+# O comando para rodar o executável
+CMD ["./imunno-collector"]

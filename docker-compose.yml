@@ -63,9 +63,11 @@ services:
     networks:
       - imunno-net
 
+  # --- SERVIÇOS DE SIMULAÇÃO CORRIGIDOS ---
   imunno_simulador:
     build:
-      context: ./tools
+      # CORRIGIDO: Aponta para a nova pasta dedicada
+      context: ./tools/simulador-malicioso
     container_name: imunno_simulador
     restart: on-failure
     depends_on:
@@ -75,10 +77,9 @@ services:
     networks:
       - imunno-net
 
-  # --- NOVO SERVIÇO ADICIONADO AQUI ---
   imunno_simulador_bem:
     build:
-      # Aponta para a nova pasta dedicada
+      # CORRIGIDO: Aponta para a nova pasta dedicada
       context: ./tools/simulador-bem
     container_name: imunno_simulador_bem
     restart: on-failure
