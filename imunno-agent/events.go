@@ -1,4 +1,4 @@
-// Arquivo: imunno-agent/events.go
+// Arquivo: imunno-agent/events.go (Versão Final e Corrigida)
 package main
 
 import "time"
@@ -26,7 +26,6 @@ type ProcessEvent struct {
 }
 
 // CommandMessage é a estrutura de um comando recebido do collector.
-// <<<--- A DEFINIÇÃO QUE FALTAVA ESTÁ AQUI ---<<<
 type CommandMessage struct {
 	Action  string            `json:"action"`
 	Payload map[string]string `json:"payload"`

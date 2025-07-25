@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"imunno-collector/config"
+	"imunno-collector/events"
 	"log"
 	"time"
 
+	"github.com/jackc/pgx"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -58,9 +60,9 @@ func (db *Database) InsertFileEvent(agentID, hostname, filePath, fileHash, fileC
 
 // InsertProcessEvent insere um novo evento de processo no banco de dados.
 func (db *Database) InsertProcessEvent(agentID, hostname, command, username string, processID, parentID int32, threatScore int, timestamp time.Time) error {
-	query := `INSERT INTO process_events (agent_id, hostname, process_id, parent_id, command, username, threat_score, timestamp)
+	query := `INSERT INTO process_events (agent_id, hostname, command, username, process_id, parent_id, threat_score, timestamp)
 	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
-	_, err := db.Pool.Exec(context.Background(), query, agentID, hostname, processID, parentID, command, username, threatScore, timestamp)
+	_, err := db.Pool.Exec(context.Background(), query, agentID, hostname, command, username, processID, parentID, threatScore, timestamp)
 	return err
 }
 
@@ -87,4 +89,37 @@ type FileEvent struct {
 	ID          int
 	FilePath    string
 	ThreatScore int
+}
+
+// Adicione esta função no final do arquivo database.go
+
+// FindProcessByPID busca um evento de processo pelo seu ID de processo.
+func (db *Database) FindProcessByPID(pid int32, hostname string) (*events.ProcessEvent, error) {
+	query := `SELECT id, agent_id, hostname, process_id, parent_id, command, username, threat_score, timestamp 
+	          FROM process_events 
+	          WHERE process_id = $1 AND hostname = $2
+	          ORDER BY timestamp DESC
+	          LIMIT 1`
+
+	var event events.ProcessEvent
+	err := db.Pool.QueryRow(context.Background(), query, pid, hostname).Scan(
+		&event.ID,
+		&event.AgentID,
+		&event.Hostname,
+		&event.ProcessID,
+		&event.ParentID,
+		&event.Command,
+		&event.Username,
+		&event.ThreatScore,
+		&event.Timestamp,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil // Retorna nil se nenhum processo for encontrado, não é um erro fatal.
+		}
+		return nil, err
+	}
+
+	return &event, nil
 }

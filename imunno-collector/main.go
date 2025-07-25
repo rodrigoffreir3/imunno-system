@@ -148,6 +148,8 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 	}
 }
 
+// Substitua a sua função processEventHandler por esta
+
 func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -161,9 +163,27 @@ func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 			return
 		}
 
-		log.Printf("Evento de processo recebido de %s: PID=%d, Comando=%s", event.AgentID, event.ProcessID, event.Command)
+		log.Printf("Evento de processo recebido de %s: PID=%d, PPID=%d, Comando=%s", event.AgentID, event.ProcessID, event.ParentID, event.Command)
 
-		err := db.InsertProcessEvent(
+		// --- ALTERAÇÃO APLICADA AQUI ---
+		// Agora, antes de salvar, iniciamos a investigação de causalidade.
+		lineage, err := traceProcessLineage(db, &event)
+		if err != nil {
+			log.Printf("ERRO durante a análise de causalidade para o PID %d: %v", event.ProcessID, err)
+			// Mesmo com erro na análise, ainda tentamos salvar o evento original.
+		}
+
+		if len(lineage) > 1 {
+			log.Printf("--- INÍCIO DA LINHAGEM DO PROCESSO (PID: %d) ---", event.ProcessID)
+			for _, p := range lineage {
+				log.Printf("  -> PID: %d (Pai: %d) | Comando: %s", p.ProcessID, p.ParentID, p.Command)
+			}
+			log.Printf("--- FIM DA LINHAGEM DO PROCESSO ---")
+			// No futuro, aqui entrará a lógica para correlacionar com eventos de arquivo.
+		}
+		// --- FIM DA ALTERAÇÃO ---
+
+		err = db.InsertProcessEvent(
 			event.AgentID,
 			event.Hostname,
 			event.Command,
@@ -212,4 +232,40 @@ func serveWs(h *hub.Hub, w http.ResponseWriter, r *http.Request) {
 
 	go client.WritePump()
 	go client.ReadPump()
+}
+
+// traceProcessLineage reconstrói a "árvore genealógica" de um processo.
+// Dado um evento de processo, ele busca por seus pais e avós no banco de dados.
+func traceProcessLineage(db *database.Database, initialEvent *events.ProcessEvent) ([]*events.ProcessEvent, error) {
+	lineage := []*events.ProcessEvent{initialEvent}
+	currentEvent := initialEvent
+
+	// Limita a busca a, por exemplo, 5 níveis de profundidade para evitar loops infinitos.
+	for i := 0; i < 5; i++ {
+		if currentEvent.ParentID == 0 {
+			// Chegamos ao topo da árvore (ou a um processo sem pai registrado).
+			break
+		}
+
+		log.Printf("[ANÁLISE DE CAUSALIDADE] Buscando pai do PID %d (PPID: %d)", currentEvent.ProcessID, currentEvent.ParentID)
+
+		// Usa a função que já criamos no database.go para encontrar o pai.
+		parentEvent, err := db.FindProcessByPID(currentEvent.ParentID, currentEvent.Hostname)
+		if err != nil {
+			log.Printf("ERRO ao buscar processo pai: %v", err)
+			return nil, err
+		}
+
+		if parentEvent == nil {
+			// Não encontramos o pai no nosso banco de dados.
+			log.Printf("[ANÁLISE DE CAUSALIDADE] Pai (PPID: %d) não encontrado no banco de dados.", currentEvent.ParentID)
+			break
+		}
+
+		// Adiciona o pai encontrado à nossa "história" e continua a busca pelo avô.
+		lineage = append([]*events.ProcessEvent{parentEvent}, lineage...) // Adiciona no início
+		currentEvent = parentEvent
+	}
+
+	return lineage, nil
 }
