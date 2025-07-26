@@ -63,10 +63,8 @@ services:
     networks:
       - imunno-net
 
-  # --- SERVIÇOS DE SIMULAÇÃO CORRIGIDOS ---
   imunno_simulador:
     build:
-      # CORRIGIDO: Aponta para a nova pasta dedicada
       context: ./tools/simulador-malicioso
     container_name: imunno_simulador
     restart: on-failure
@@ -79,9 +77,21 @@ services:
 
   imunno_simulador_bem:
     build:
-      # CORRIGIDO: Aponta para a nova pasta dedicada
       context: ./tools/simulador-bem
     container_name: imunno_simulador_bem
+    restart: on-failure
+    depends_on:
+      - imunno_collector
+    environment:
+        COLLECTOR_URL: "http://imunno_collector:8080"
+    networks:
+      - imunno-net
+
+  # --- CORREÇÃO DE INDENTAÇÃO APLICADA AQUI ---
+  imunno_simulador_causalidade:
+    build:
+      context: ./tools/simulador-causalidade
+    container_name: imunno_simulador_causalidade
     restart: on-failure
     depends_on:
       - imunno_collector

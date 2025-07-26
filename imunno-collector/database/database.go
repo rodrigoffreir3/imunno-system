@@ -123,3 +123,33 @@ func (db *Database) FindProcessByPID(pid int32, hostname string) (*events.Proces
 
 	return &event, nil
 }
+
+// Adicione esta nova função no final do arquivo database.go
+
+// FindFileEventsInTimeWindow busca por eventos de arquivo em uma janela de tempo específica
+// que antecede um determinado timestamp para um hostname.
+func (db *Database) FindFileEventsInTimeWindow(hostname string, before time.Time, window time.Duration) ([]events.FileEvent, error) {
+	startTime := before.Add(-window)
+
+	query := `SELECT id, agent_id, hostname, file_path, file_hash_sha256, threat_score, timestamp
+	          FROM file_events 
+	          WHERE hostname = $1 AND timestamp BETWEEN $2 AND $3
+	          ORDER BY timestamp DESC`
+
+	rows, err := db.Pool.Query(context.Background(), query, hostname, startTime, before)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var eventsFound []events.FileEvent
+	for rows.Next() {
+		var event events.FileEvent
+		if err := rows.Scan(&event.ID, &event.AgentID, &event.Hostname, &event.FilePath, &event.FileHashSHA256, &event.ThreatScore, &event.Timestamp); err != nil {
+			return nil, err
+		}
+		eventsFound = append(eventsFound, event)
+	}
+
+	return eventsFound, nil
+}
