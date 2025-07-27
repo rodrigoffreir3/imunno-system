@@ -165,23 +165,40 @@ func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 
 		log.Printf("Evento de processo recebido de %s: PID=%d, PPID=%d, Comando=%s", event.AgentID, event.ProcessID, event.ParentID, event.Command)
 
-		// --- ALTERAÇÃO APLICADA AQUI ---
-		// Agora, antes de salvar, iniciamos a investigação de causalidade.
+		// --- LÓGICA DE CORRELAÇÃO DE CAUSALIDADE APRIMORADA ---
 		lineage, err := traceProcessLineage(db, &event)
 		if err != nil {
 			log.Printf("ERRO durante a análise de causalidade para o PID %d: %v", event.ProcessID, err)
-			// Mesmo com erro na análise, ainda tentamos salvar o evento original.
 		}
 
-		if len(lineage) > 1 {
-			log.Printf("--- INÍCIO DA LINHAGEM DO PROCESSO (PID: %d) ---", event.ProcessID)
-			for _, p := range lineage {
-				log.Printf("  -> PID: %d (Pai: %d) | Comando: %s", p.ProcessID, p.ParentID, p.Command)
+		// Itera sobre a linhagem para encontrar a origem
+		for _, p := range lineage {
+			// Extrai o caminho do arquivo do comando (ex: /usr/bin/php /var/www/...)
+			parts := strings.Fields(p.Command)
+			if len(parts) > 1 {
+				filePath := parts[1]
+				// Verifica se o comando executa um arquivo que existe no nosso banco
+				fileOrigin, err := db.FindFileEventByPath(filePath, p.Hostname)
+				if err != nil {
+					log.Printf("ERRO ao buscar arquivo de origem para %s: %v", filePath, err)
+					continue // Continua para o próximo processo na linhagem
+				}
+
+				if fileOrigin != nil {
+					// ENCONTRAMOS A CONEXÃO!
+					log.Printf("!!! CAUSALIDADE DETECTADA !!!")
+					log.Printf("Processo PID %d originado do arquivo: %s", p.ProcessID, fileOrigin.FilePath)
+					log.Printf("Score do arquivo de origem: %d. Score do processo: %d.", fileOrigin.ThreatScore, p.ThreatScore)
+
+					// Soma os scores para criar um alerta de alta prioridade
+					newScore := p.ThreatScore + fileOrigin.ThreatScore
+					event.ThreatScore = newScore // Atualiza o score do evento atual
+					log.Printf("Novo score de ameaça combinado por causalidade: %d", newScore)
+					break // Para a busca assim que encontrar a primeira conexão
+				}
 			}
-			log.Printf("--- FIM DA LINHAGEM DO PROCESSO ---")
-			// No futuro, aqui entrará a lógica para correlacionar com eventos de arquivo.
 		}
-		// --- FIM DA ALTERAÇÃO ---
+		// --- FIM DA LÓGICA DE CORRELAÇÃO ---
 
 		err = db.InsertProcessEvent(
 			event.AgentID,
@@ -190,7 +207,7 @@ func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 			event.Username,
 			event.ProcessID,
 			event.ParentID,
-			event.ThreatScore,
+			event.ThreatScore, // Agora salva o score combinado, se houver
 			event.Timestamp,
 		)
 		if err != nil {
@@ -234,36 +251,44 @@ func serveWs(h *hub.Hub, w http.ResponseWriter, r *http.Request) {
 	go client.ReadPump()
 }
 
-// traceProcessLineage reconstrói a "árvore genealógica" de um processo.
-// Dado um evento de processo, ele busca por seus pais e avós no banco de dados.
+// Substitua a sua função traceProcessLineage por esta versão mais robusta
+
 func traceProcessLineage(db *database.Database, initialEvent *events.ProcessEvent) ([]*events.ProcessEvent, error) {
 	lineage := []*events.ProcessEvent{initialEvent}
 	currentEvent := initialEvent
 
-	// Limita a busca a, por exemplo, 5 níveis de profundidade para evitar loops infinitos.
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 5; i++ { // Limita a busca a 5 níveis
 		if currentEvent.ParentID == 0 {
-			// Chegamos ao topo da árvore (ou a um processo sem pai registrado).
 			break
 		}
 
 		log.Printf("[ANÁLISE DE CAUSALIDADE] Buscando pai do PID %d (PPID: %d)", currentEvent.ProcessID, currentEvent.ParentID)
 
-		// Usa a função que já criamos no database.go para encontrar o pai.
-		parentEvent, err := db.FindProcessByPID(currentEvent.ParentID, currentEvent.Hostname)
-		if err != nil {
-			log.Printf("ERRO ao buscar processo pai: %v", err)
-			return nil, err
+		var parentEvent *events.ProcessEvent
+		var err error
+
+		// --- LÓGICA DE RETENTATIVA ADICIONADA AQUI ---
+		// Tenta encontrar o pai 3 vezes, com uma pequena pausa, para dar tempo ao banco de dados.
+		for attempt := 0; attempt < 3; attempt++ {
+			parentEvent, err = db.FindProcessByPID(currentEvent.ParentID, currentEvent.Hostname)
+			if err != nil {
+				log.Printf("ERRO na tentativa %d de buscar processo pai: %v", attempt+1, err)
+				return nil, err // Se o erro for real (não "não encontrado"), desiste.
+			}
+			if parentEvent != nil {
+				break // Encontramos o pai, saia do loop de retentativa.
+			}
+			// Se não encontrou, espera um pouco e tenta de novo.
+			time.Sleep(100 * time.Millisecond)
 		}
+		// --- FIM DA LÓGICA DE RETENTATIVA ---
 
 		if parentEvent == nil {
-			// Não encontramos o pai no nosso banco de dados.
-			log.Printf("[ANÁLISE DE CAUSALIDADE] Pai (PPID: %d) não encontrado no banco de dados.", currentEvent.ParentID)
+			log.Printf("[ANÁLISE DE CAUSALIDADE] Pai (PPID: %d) não encontrado no banco de dados após múltiplas tentativas.", currentEvent.ParentID)
 			break
 		}
 
-		// Adiciona o pai encontrado à nossa "história" e continua a busca pelo avô.
-		lineage = append([]*events.ProcessEvent{parentEvent}, lineage...) // Adiciona no início
+		lineage = append([]*events.ProcessEvent{parentEvent}, lineage...)
 		currentEvent = parentEvent
 	}
 

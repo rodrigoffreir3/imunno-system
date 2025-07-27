@@ -153,3 +153,32 @@ func (db *Database) FindFileEventsInTimeWindow(hostname string, before time.Time
 
 	return eventsFound, nil
 }
+
+// FindFileEventByPath busca o evento de arquivo mais recente para um caminho específico.
+func (db *Database) FindFileEventByPath(filePath string, hostname string) (*events.FileEvent, error) {
+	query := `SELECT id, agent_id, hostname, file_path, file_hash_sha256, threat_score, timestamp
+	          FROM file_events 
+	          WHERE file_path = $1 AND hostname = $2
+	          ORDER BY timestamp DESC
+	          LIMIT 1`
+
+	var event events.FileEvent
+	err := db.Pool.QueryRow(context.Background(), query, &filePath, &hostname).Scan(
+		&event.ID,
+		&event.AgentID,
+		&event.Hostname,
+		&event.FilePath,
+		&event.FileHashSHA256,
+		&event.ThreatScore,
+		&event.Timestamp,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil // Nenhum evento encontrado, não é um erro fatal.
+		}
+		return nil, err
+	}
+
+	return &event, nil
+}
