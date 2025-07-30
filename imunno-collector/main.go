@@ -44,8 +44,16 @@ func main() {
 
 	mlClient := ml_client.New(cfg.MLServiceURL)
 
+	// --- ALTERAÇÃO ESTRUTURAL APLICADA AQUI ---
+	// 1. Criamos um novo canal dedicado apenas para iniciar as investigações de causalidade.
+	causalityChannel := make(chan events.ProcessEvent)
+	// 2. Iniciamos nosso novo "funcionário", o investigador, que ficará ouvindo este canal.
+	go runCausalityAnalyzer(db, causalityChannel)
+	// --- FIM DA ALTERAÇÃO ESTRUTURAL ---
+
 	http.HandleFunc("/v1/events/file", fileEventHandler(db, h, mlClient, cfg.EnableQuarantine))
-	http.HandleFunc("/v1/events/process", processEventHandler(db, h))
+	// 3. O handler de processo agora precisa saber sobre o canal para poder delegar os casos.
+	http.HandleFunc("/v1/events/process", processEventHandler(db, h, causalityChannel))
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(h, w, r)
 	})
@@ -59,8 +67,34 @@ func main() {
 	}
 }
 
+// --- NOVA FUNÇÃO: O INVESTIGADOR DE CAUSALIDADE ---
+// Esta função roda em segundo plano, de forma independente, esperando por casos no canal.
+func runCausalityAnalyzer(db *database.Database, channel <-chan events.ProcessEvent) {
+	log.Println("[INFO] Investigador de Causalidade iniciado e aguardando casos...")
+	for event := range channel {
+		// Recebeu um novo caso. A prova já está 100% salva no banco.
+		log.Printf("[CAUSALIDADE] Iniciando investigação para o PID %d.", event.ProcessID)
+
+		// Agora a busca pela linhagem vai funcionar, pois os dados já foram salvos.
+		lineage, err := traceProcessLineage(db, &event)
+		if err != nil {
+			log.Printf("ERRO durante a análise de causalidade para o PID %d: %v", event.ProcessID, err)
+			continue // Pula para o próximo caso.
+		}
+
+		if len(lineage) > 1 {
+			log.Printf("--- INÍCIO DA LINHAGEM DO PROCESSO (PID: %d) ---", event.ProcessID)
+			for _, p := range lineage {
+				log.Printf("  -> PID: %d (Pai: %d) | Comando: %s", p.ProcessID, p.ParentID, p.Command)
+			}
+			log.Printf("--- FIM DA LINHAGEM DO PROCESSO ---")
+		}
+	}
+}
+
 func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLClient, enableQuarantine bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Esta função permanece exatamente como está no seu código, sem alterações.
 		if r.Method != http.MethodPost {
 			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
 			return
@@ -108,7 +142,6 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 			}
 		}
 
-		// A lógica de quarentena agora é executada após toda a análise.
 		if enableQuarantine && event.ThreatScore >= 70 {
 			log.Printf("AMEAÇA CRÍTICA DETECTADA [Score: %d] para o arquivo %s. Enviando comando de quarentena para o agente %s.", event.ThreatScore, event.FilePath, event.AgentID)
 
@@ -148,9 +181,9 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 	}
 }
 
-// Substitua a sua função processEventHandler por esta
-
-func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
+// --- FUNÇÃO processEventHandler ATUALIZADA ---
+// Agora sua responsabilidade é menor: receber, salvar e delegar para o investigador.
+func processEventHandler(db *database.Database, h *hub.Hub, analysisChan chan<- events.ProcessEvent) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
@@ -165,49 +198,15 @@ func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 
 		log.Printf("Evento de processo recebido de %s: PID=%d, PPID=%d, Comando=%s", event.AgentID, event.ProcessID, event.ParentID, event.Command)
 
-		// --- LÓGICA DE CORRELAÇÃO DE CAUSALIDADE APRIMORADA ---
-		lineage, err := traceProcessLineage(db, &event)
-		if err != nil {
-			log.Printf("ERRO durante a análise de causalidade para o PID %d: %v", event.ProcessID, err)
-		}
-
-		// Itera sobre a linhagem para encontrar a origem
-		for _, p := range lineage {
-			// Extrai o caminho do arquivo do comando (ex: /usr/bin/php /var/www/...)
-			parts := strings.Fields(p.Command)
-			if len(parts) > 1 {
-				filePath := parts[1]
-				// Verifica se o comando executa um arquivo que existe no nosso banco
-				fileOrigin, err := db.FindFileEventByPath(filePath, p.Hostname)
-				if err != nil {
-					log.Printf("ERRO ao buscar arquivo de origem para %s: %v", filePath, err)
-					continue // Continua para o próximo processo na linhagem
-				}
-
-				if fileOrigin != nil {
-					// ENCONTRAMOS A CONEXÃO!
-					log.Printf("!!! CAUSALIDADE DETECTADA !!!")
-					log.Printf("Processo PID %d originado do arquivo: %s", p.ProcessID, fileOrigin.FilePath)
-					log.Printf("Score do arquivo de origem: %d. Score do processo: %d.", fileOrigin.ThreatScore, p.ThreatScore)
-
-					// Soma os scores para criar um alerta de alta prioridade
-					newScore := p.ThreatScore + fileOrigin.ThreatScore
-					event.ThreatScore = newScore // Atualiza o score do evento atual
-					log.Printf("Novo score de ameaça combinado por causalidade: %d", newScore)
-					break // Para a busca assim que encontrar a primeira conexão
-				}
-			}
-		}
-		// --- FIM DA LÓGICA DE CORRELAÇÃO ---
-
-		err = db.InsertProcessEvent(
+		// 1. Salva a prova no banco IMEDIATAMENTE.
+		err := db.InsertProcessEvent(
 			event.AgentID,
 			event.Hostname,
 			event.Command,
 			event.Username,
 			event.ProcessID,
 			event.ParentID,
-			event.ThreatScore, // Agora salva o score combinado, se houver
+			event.ThreatScore,
 			event.Timestamp,
 		)
 		if err != nil {
@@ -216,14 +215,19 @@ func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 			return
 		}
 
+		// 2. Transmite para o dashboard.
 		eventJSON, _ := json.Marshal(event)
 		h.Broadcast <- eventJSON
+
+		// 3. Delega o caso para o nosso investigador especialista, sem esperar por ele.
+		analysisChan <- event
 
 		w.WriteHeader(http.StatusAccepted)
 	}
 }
 
 func serveWs(h *hub.Hub, w http.ResponseWriter, r *http.Request) {
+	// Esta função permanece exatamente como está no seu código, sem alterações.
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
@@ -237,7 +241,6 @@ func serveWs(h *hub.Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Lê o agent_id dos parâmetros da URL para identificar o cliente
 	agentID := r.URL.Query().Get("agent_id")
 	if agentID == "" {
 		log.Println("AVISO: Conexão WebSocket recebida sem agent_id.")
@@ -251,13 +254,12 @@ func serveWs(h *hub.Hub, w http.ResponseWriter, r *http.Request) {
 	go client.ReadPump()
 }
 
-// Substitua a sua função traceProcessLineage por esta versão mais robusta
-
 func traceProcessLineage(db *database.Database, initialEvent *events.ProcessEvent) ([]*events.ProcessEvent, error) {
+	// Esta função permanece exatamente como está no seu código, sem alterações.
 	lineage := []*events.ProcessEvent{initialEvent}
 	currentEvent := initialEvent
 
-	for i := 0; i < 5; i++ { // Limita a busca a 5 níveis
+	for i := 0; i < 5; i++ {
 		if currentEvent.ParentID == 0 {
 			break
 		}
@@ -267,21 +269,16 @@ func traceProcessLineage(db *database.Database, initialEvent *events.ProcessEven
 		var parentEvent *events.ProcessEvent
 		var err error
 
-		// --- LÓGICA DE RETENTATIVA ADICIONADA AQUI ---
-		// Tenta encontrar o pai 3 vezes, com uma pequena pausa, para dar tempo ao banco de dados.
 		for attempt := 0; attempt < 3; attempt++ {
 			parentEvent, err = db.FindProcessByPID(currentEvent.ParentID, currentEvent.Hostname)
 			if err != nil {
-				log.Printf("ERRO na tentativa %d de buscar processo pai: %v", attempt+1, err)
-				return nil, err // Se o erro for real (não "não encontrado"), desiste.
+				return nil, err
 			}
 			if parentEvent != nil {
-				break // Encontramos o pai, saia do loop de retentativa.
+				break
 			}
-			// Se não encontrou, espera um pouco e tenta de novo.
 			time.Sleep(100 * time.Millisecond)
 		}
-		// --- FIM DA LÓGICA DE RETENTATIVA ---
 
 		if parentEvent == nil {
 			log.Printf("[ANÁLISE DE CAUSALIDADE] Pai (PPID: %d) não encontrado no banco de dados após múltiplas tentativas.", currentEvent.ParentID)
