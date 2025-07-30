@@ -36,6 +36,7 @@ services:
       - postgres
       - imunno_ml
     environment:
+      ENABLE_QUARANTINE=true
       DB_URL: "postgres://imunno_user:imunno_pass@postgres:5432/imunno_db?sslmode=disable"
       ML_SERVICE_URL: "http://imunno_ml:5000"
     ports:
@@ -67,7 +68,9 @@ services:
     build:
       context: ./tools/simulador-malicioso
     container_name: imunno_simulador
-    restart: on-failure
+    # A linha 'restart' foi removida, pois ele agora é um serviço sob demanda.
+    profiles:
+      - tools # ADICIONADO: Este serviço agora só inicia quando chamado.
     depends_on:
       - imunno_collector
     environment:
@@ -79,7 +82,8 @@ services:
     build:
       context: ./tools/simulador-bem
     container_name: imunno_simulador_bem
-    restart: on-failure
+    profiles:
+      - tools # ADICIONADO: Este serviço agora só inicia quando chamado.
     depends_on:
       - imunno_collector
     environment:
@@ -87,12 +91,12 @@ services:
     networks:
       - imunno-net
 
-  # --- CORREÇÃO DE INDENTAÇÃO APLICADA AQUI ---
   imunno_simulador_causalidade:
     build:
       context: ./tools/simulador-causalidade
     container_name: imunno_simulador_causalidade
-    restart: on-failure
+    profiles:
+      - tools # ADICIONADO: Este serviço agora só inicia quando chamado.
     depends_on:
       - imunno_collector
     environment:

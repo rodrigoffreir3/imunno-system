@@ -149,6 +149,10 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 	}
 }
 
+// Substitua a sua função processEventHandler por esta versão final
+
+// Substitua a sua função processEventHandler por esta versão final
+
 func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -164,6 +168,7 @@ func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 
 		log.Printf("Evento de processo recebido de %s: PID=%d, PPID=%d, Comando=%s", event.AgentID, event.ProcessID, event.ParentID, event.Command)
 
+		// 1. Salva a prova no banco IMEDIATAMENTE.
 		err := db.InsertProcessEvent(
 			event.AgentID,
 			event.Hostname,
@@ -180,21 +185,66 @@ func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 			return
 		}
 
+		// 2. Transmite o evento inicial para o dashboard.
 		eventJSON, _ := json.Marshal(event)
 		h.Broadcast <- eventJSON
 
+		// Esta é a nova lógica para a sua goroutine de análise de causalidade
+
 		go func(eventToInvestigate events.ProcessEvent) {
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(200 * time.Millisecond) // Pausa estratégica
 
 			lineage, err := traceProcessLineage(db, &eventToInvestigate)
 			if err != nil {
 				log.Printf("ERRO durante a análise de causalidade para o PID %d: %v", eventToInvestigate.ProcessID, err)
+				return
 			}
 
 			if len(lineage) > 1 {
 				log.Printf("--- INÍCIO DA LINHAGEM DO PROCESSO (PID: %d) ---", eventToInvestigate.ProcessID)
+				isCorrelated := false
 				for _, p := range lineage {
 					log.Printf("  -> PID: %d (Pai: %d) | Comando: %s", p.ProcessID, p.ParentID, p.Command)
+
+					// --- A INTELIGÊNCIA FINAL ESTÁ AQUI ---
+					parts := strings.Fields(p.Command)
+					if len(parts) > 1 {
+						filePath := parts[1]
+						// Procura por eventos de arquivo para este caminho nos últimos 10 minutos
+						fileOrigins, err := db.FindFileEventsInTimeWindow(p.Hostname, p.Timestamp, 10*time.Minute)
+						if err != nil {
+							log.Printf("ERRO ao buscar arquivos de origem para %s: %v", filePath, err)
+							continue
+						}
+
+						for _, file := range fileOrigins {
+							if file.FilePath == filePath && file.ThreatScore > 0 {
+								// SUCESSO! A CONEXÃO FOI FEITA.
+								log.Printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+								log.Printf("!!! CAUSALIDADE DETECTADA !!!")
+								log.Printf("!!! Processo PID %d originado do arquivo: %s", p.ProcessID, file.FilePath)
+
+								originalProcessScore := eventToInvestigate.ThreatScore
+								newScore := originalProcessScore + file.ThreatScore
+								eventToInvestigate.ThreatScore = newScore // Atualiza o score do evento original
+
+								log.Printf("!!! Score do Arquivo: %d | Score Original do Processo: %d | Novo Score Combinado: %d", file.ThreatScore, originalProcessScore, newScore)
+								log.Printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+
+								// Atualiza o evento no banco com o novo score
+								db.UpdateProcessEventScore(eventToInvestigate.ID, newScore)
+
+								// Retransmite o evento ATUALIZADO para o dashboard para a mágica acontecer
+								updatedEventJSON, _ := json.Marshal(eventToInvestigate)
+								h.Broadcast <- updatedEventJSON
+								isCorrelated = true
+								break // Para a busca assim que encontrar a primeira conexão.
+							}
+						}
+					}
+					if isCorrelated {
+						break
+					}
 				}
 				log.Printf("--- FIM DA LINHAGEM DO PROCESSO ---")
 			}

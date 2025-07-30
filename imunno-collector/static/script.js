@@ -1,6 +1,7 @@
-// Arquivo: imunno-collector/static/script.js (Corrigido para Firebase Studio)
+// Arquivo: imunno-collector/static/script.js (Com a Lógica de Causalidade Visual)
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Referências aos elementos da página
     const fileEventsBody = document.getElementById('file-events-body');
     const processEventsBody = document.getElementById('process-events-body');
     const statusText = document.getElementById('status-text');
@@ -9,9 +10,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const threatsNeutralizedEl = document.getElementById('threats-neutralized');
     const lastThreatEl = document.getElementById('last-threat');
 
+    // Variáveis para contar as métricas
     let totalEvents = 0;
     let totalThreats = 0;
 
+    // Função para determinar a classe de cor com base na pontuação de ameaça
     const getThreatLevelClass = (score) => {
         if (score >= 70) return 'threat-high';
         if (score >= 40) return 'threat-medium';
@@ -19,31 +22,32 @@ document.addEventListener('DOMContentLoaded', () => {
         return '';
     };
 
+    // Função genérica para adicionar um evento a uma tabela e atualizar métricas
     const addEventToTable = (event, tableBody, createRowHTML) => {
         totalEvents++;
         eventsTodayEl.textContent = totalEvents;
+
         const score = event.threat_score || 0;
         if (score > 0) {
             totalThreats++;
             threatsNeutralizedEl.textContent = totalThreats;
-            lastThreatEl.textContent = event.file_path || event.command;
+            // Atualiza a última ameaça com o caminho do arquivo ou o comando
+            const threatIdentifier = event.file_path || event.command;
+            lastThreatEl.textContent = threatIdentifier.split('/').pop(); // Mostra apenas o nome do arquivo/comando
         }
+
         const row = document.createElement('tr');
         row.className = getThreatLevelClass(score);
         row.innerHTML = createRowHTML(event);
         tableBody.prepend(row);
     };
 
+    // --- CONEXÃO WEBSOCKET EM TEMPO REAL ---
     const connectWebSocket = () => {
-        // --- CORREÇÃO APLICADA AQUI ---
-        // Verifica se a página foi carregada com HTTPS.
         const isSecure = window.location.protocol === 'https:';
-        // Usa 'wss://' para conexões seguras, ou 'ws://' para conexões locais.
         const socketProtocol = isSecure ? 'wss://' : 'ws://';
         const socketURL = `${socketProtocol}${window.location.host}/ws`;
-        // --- FIM DA CORREÇÃO ---
 
-        console.log(`Tentando conectar ao WebSocket em: ${socketURL}`);
         const socket = new WebSocket(socketURL);
 
         socket.onopen = () => {
@@ -57,7 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const event = JSON.parse(message.data);
                 const timestamp = new Date(event.timestamp).toLocaleString('pt-BR');
 
-                if (event.file_path) {
+                if (event.file_path) { // É um evento de arquivo
                     addEventToTable(event, fileEventsBody, (e) => `
                         <td>${timestamp}</td>
                         <td>${e.hostname || 'N/A'}</td>
@@ -65,15 +69,28 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td>${e.threat_score || 0}</td>
                         <td><span class="details-json">${JSON.stringify(e.analysis_findings || {})}</span></td>
                     `);
-                } else if (event.process_id) {
-                    addEventToTable(event, processEventsBody, (e) => `
-                        <td>${timestamp}</td>
-                        <td>${e.hostname || 'N/A'}</td>
-                        <td>${e.process_id || 'N/A'}</td>
-                        <td>${e.command || 'N/A'}</td>
-                        <td>${e.username || 'N/A'}</td>
-                        <td>${e.threat_score || 0}</td>
-                    `);
+                } else if (event.process_id) { // É um evento de processo
+                    addEventToTable(event, processEventsBody, (e) => {
+                        let causalityInfo = 'N/A';
+                        // --- LÓGICA DE CAUSALIDADE VISUAL ADICIONADA AQUI ---
+                        // Se o score for alto, presumimos que a causalidade foi detectada no backend.
+                        if ((e.threat_score || 0) >= 70) {
+                            const parts = (e.command || '').split(' ');
+                            if (parts.length > 1) {
+                                // Pega o nome do arquivo do comando e o exibe.
+                                causalityInfo = `<span class="text-yellow-400 font-bold">${parts[1].split('/').pop()}</span>`;
+                            }
+                        }
+                        return `
+                            <td>${timestamp}</td>
+                            <td>${e.hostname || 'N/A'}</td>
+                            <td>${e.process_id || 'N/A'}</td>
+                            <td>${e.command || 'N/A'}</td>
+                            <td>${e.username || 'N/A'}</td>
+                            <td>${e.threat_score || 0}</td>
+                            <td>${causalityInfo}</td>
+                        `;
+                    });
                 }
             } catch (error) {
                 console.error('Erro ao processar mensagem do WebSocket:', error);
@@ -93,5 +110,6 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     };
 
+    // Inicia a conexão
     connectWebSocket();
 });
