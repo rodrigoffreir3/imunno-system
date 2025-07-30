@@ -28,20 +28,22 @@ type ProcessEvent struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+// Substitua APENAS a função main() no seu arquivo simulador_causalidade_v2.go
+
 func main() {
-	log.Println("--- INICIANDO SIMULADOR DE CAUSALIDADE v2 (HISTÓRIA COMPLETA) ---")
+	log.Println("--- INICIANDO SIMULAÇÃO 'GRAN FINALE' ---")
 	collectorURL := os.Getenv("COLLECTOR_URL")
 	if collectorURL == "" {
 		collectorURL = "http://localhost:8080"
 	}
 
-	agentID := "causality-sim-agent-002"
-	hostname := "servidor-alvo-v2"
-	apachePID := int32(150)
-	phpPID := int32(30123)
-	sleeperFilePath := "/var/www/html/uploads/cache_update_v2.php"
+	agentID := "gran-finale-agent-001"
+	hostname := "servidor-alvo-final"
+	apachePID := int32(200) // Usando PIDs diferentes para um novo teste
+	phpPID := int32(40555)
+	sleeperFilePath := "/var/www/html/wp-content/uploads/logo_updater.php" // Um nome de arquivo disfarçado
 
-	// ETAPA 1: O "PAI" NASCE E É SALVO NO BANCO
+	// ETAPA 1: O "PAI" NASCE (PROCESSO BENIGNO)
 	log.Printf("[ETAPA 1] Simulando o início do servidor Apache (PID: %d).", apachePID)
 	sendProcessEvent(collectorURL, ProcessEvent{
 		AgentID: agentID, Hostname: hostname, ProcessID: apachePID, ParentID: 1,
@@ -49,9 +51,16 @@ func main() {
 	})
 	time.Sleep(2 * time.Second)
 
-	// ETAPA 2: A INFILTRAÇÃO
-	log.Printf("[ETAPA 2] Injetando arquivo 'sleeper agent' em: %s", sleeperFilePath)
-	sleeperContent := "<?php /* Script malicioso v2 */ system($_GET['exec']); ?>"
+	// ETAPA 2: A INFILTRAÇÃO COM O ATAQUE MATRIOSCA
+	log.Printf("[ETAPA 2] Injetando arquivo 'Matriosca' em: %s", sleeperFilePath)
+	// --- ALTERAÇÃO APLICADA AQUI ---
+	sleeperContentBytes, err := os.ReadFile("../ataque_matriosca.php")
+	if err != nil {
+		log.Fatalf("ERRO: Não foi possível ler o arquivo 'ataque_matriosca.php'. Certifique-se de que ele está na pasta 'tools'.")
+	}
+	sleeperContent := string(sleeperContentBytes)
+	// --- FIM DA ALTERAÇÃO ---
+
 	sendFileEvent(collectorURL, FileEvent{
 		AgentID: agentID, Hostname: hostname, FilePath: sleeperFilePath, Content: sleeperContent, Timestamp: time.Now(),
 	})
@@ -60,13 +69,13 @@ func main() {
 	log.Println("[TIMER] Aguardando 15 segundos...")
 	time.Sleep(15 * time.Second)
 
-	// ETAPA 3: O DESPERTAR (O "FILHO" NASCE DO "PAI" QUE JÁ ESTÁ NO BANCO)
-	log.Printf("[ETAPA 3] Apache (PID: %d) executa o script malicioso (novo PID: %d).", apachePID, phpPID)
+	// ETAPA 3: O DESPERTAR
+	log.Printf("[ETAPA 3] Apache (PID: %d) executa o script Matriosca (novo PID: %d).", apachePID, phpPID)
 	sendProcessEvent(collectorURL, ProcessEvent{
 		AgentID: agentID, Hostname: hostname, ProcessID: phpPID, ParentID: apachePID,
 		Command: fmt.Sprintf("/usr/bin/php %s", sleeperFilePath), Username: "www-data", Timestamp: time.Now(),
 	})
-	log.Println("--- SIMULAÇÃO DE CAUSALIDADE v2 CONCLUÍDA ---")
+	log.Println("--- SIMULAÇÃO 'GRAN FINALE' CONCLUÍDA ---")
 }
 
 func sendFileEvent(collectorURL string, event FileEvent) {
