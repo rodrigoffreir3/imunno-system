@@ -15,8 +15,10 @@ import (
 	"imunno-collector/ml_client"
 
 	"github.com/gorilla/websocket"
+	"github.com/jackc/pgx/v5"
 )
 
+// main continua igual
 func main() {
 	log.Println("--- INICIANDO IMUNNO COLLECTOR ---")
 
@@ -44,16 +46,8 @@ func main() {
 
 	mlClient := ml_client.New(cfg.MLServiceURL)
 
-	// --- ALTERAÇÃO ESTRUTURAL APLICADA AQUI ---
-	// 1. Criamos um novo canal dedicado apenas para iniciar as investigações de causalidade.
-	causalityChannel := make(chan events.ProcessEvent)
-	// 2. Iniciamos nosso novo "funcionário", o investigador, que ficará ouvindo este canal.
-	go runCausalityAnalyzer(db, causalityChannel)
-	// --- FIM DA ALTERAÇÃO ESTRUTURAL ---
-
 	http.HandleFunc("/v1/events/file", fileEventHandler(db, h, mlClient, cfg.EnableQuarantine))
-	// 3. O handler de processo agora precisa saber sobre o canal para poder delegar os casos.
-	http.HandleFunc("/v1/events/process", processEventHandler(db, h, causalityChannel))
+	http.HandleFunc("/v1/events/process", processEventHandler(db, h))
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(h, w, r)
 	})
@@ -67,34 +61,8 @@ func main() {
 	}
 }
 
-// --- NOVA FUNÇÃO: O INVESTIGADOR DE CAUSALIDADE ---
-// Esta função roda em segundo plano, de forma independente, esperando por casos no canal.
-func runCausalityAnalyzer(db *database.Database, channel <-chan events.ProcessEvent) {
-	log.Println("[INFO] Investigador de Causalidade iniciado e aguardando casos...")
-	for event := range channel {
-		// Recebeu um novo caso. A prova já está 100% salva no banco.
-		log.Printf("[CAUSALIDADE] Iniciando investigação para o PID %d.", event.ProcessID)
-
-		// Agora a busca pela linhagem vai funcionar, pois os dados já foram salvos.
-		lineage, err := traceProcessLineage(db, &event)
-		if err != nil {
-			log.Printf("ERRO durante a análise de causalidade para o PID %d: %v", event.ProcessID, err)
-			continue // Pula para o próximo caso.
-		}
-
-		if len(lineage) > 1 {
-			log.Printf("--- INÍCIO DA LINHAGEM DO PROCESSO (PID: %d) ---", event.ProcessID)
-			for _, p := range lineage {
-				log.Printf("  -> PID: %d (Pai: %d) | Comando: %s", p.ProcessID, p.ParentID, p.Command)
-			}
-			log.Printf("--- FIM DA LINHAGEM DO PROCESSO ---")
-		}
-	}
-}
-
 func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLClient, enableQuarantine bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Esta função permanece exatamente como está no seu código, sem alterações.
 		if r.Method != http.MethodPost {
 			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
 			return
@@ -181,9 +149,7 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 	}
 }
 
-// --- FUNÇÃO processEventHandler ATUALIZADA ---
-// Agora sua responsabilidade é menor: receber, salvar e delegar para o investigador.
-func processEventHandler(db *database.Database, h *hub.Hub, analysisChan chan<- events.ProcessEvent) http.HandlerFunc {
+func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
@@ -198,7 +164,6 @@ func processEventHandler(db *database.Database, h *hub.Hub, analysisChan chan<- 
 
 		log.Printf("Evento de processo recebido de %s: PID=%d, PPID=%d, Comando=%s", event.AgentID, event.ProcessID, event.ParentID, event.Command)
 
-		// 1. Salva a prova no banco IMEDIATAMENTE.
 		err := db.InsertProcessEvent(
 			event.AgentID,
 			event.Hostname,
@@ -215,19 +180,31 @@ func processEventHandler(db *database.Database, h *hub.Hub, analysisChan chan<- 
 			return
 		}
 
-		// 2. Transmite para o dashboard.
 		eventJSON, _ := json.Marshal(event)
 		h.Broadcast <- eventJSON
 
-		// 3. Delega o caso para o nosso investigador especialista, sem esperar por ele.
-		analysisChan <- event
+		go func(eventToInvestigate events.ProcessEvent) {
+			time.Sleep(200 * time.Millisecond)
+
+			lineage, err := traceProcessLineage(db, &eventToInvestigate)
+			if err != nil {
+				log.Printf("ERRO durante a análise de causalidade para o PID %d: %v", eventToInvestigate.ProcessID, err)
+			}
+
+			if len(lineage) > 1 {
+				log.Printf("--- INÍCIO DA LINHAGEM DO PROCESSO (PID: %d) ---", eventToInvestigate.ProcessID)
+				for _, p := range lineage {
+					log.Printf("  -> PID: %d (Pai: %d) | Comando: %s", p.ProcessID, p.ParentID, p.Command)
+				}
+				log.Printf("--- FIM DA LINHAGEM DO PROCESSO ---")
+			}
+		}(event)
 
 		w.WriteHeader(http.StatusAccepted)
 	}
 }
 
 func serveWs(h *hub.Hub, w http.ResponseWriter, r *http.Request) {
-	// Esta função permanece exatamente como está no seu código, sem alterações.
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
@@ -255,7 +232,6 @@ func serveWs(h *hub.Hub, w http.ResponseWriter, r *http.Request) {
 }
 
 func traceProcessLineage(db *database.Database, initialEvent *events.ProcessEvent) ([]*events.ProcessEvent, error) {
-	// Esta função permanece exatamente como está no seu código, sem alterações.
 	lineage := []*events.ProcessEvent{initialEvent}
 	currentEvent := initialEvent
 
@@ -266,22 +242,16 @@ func traceProcessLineage(db *database.Database, initialEvent *events.ProcessEven
 
 		log.Printf("[ANÁLISE DE CAUSALIDADE] Buscando pai do PID %d (PPID: %d)", currentEvent.ProcessID, currentEvent.ParentID)
 
-		var parentEvent *events.ProcessEvent
-		var err error
-
-		for attempt := 0; attempt < 3; attempt++ {
-			parentEvent, err = db.FindProcessByPID(currentEvent.ParentID, currentEvent.Hostname)
-			if err != nil {
-				return nil, err
-			}
-			if parentEvent != nil {
+		parentEvent, err := db.FindProcessByPID(currentEvent.ParentID, currentEvent.Hostname)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				log.Printf("[ANÁLISE DE CAUSALIDADE] Pai (PPID: %d) não encontrado no banco de dados.", currentEvent.ParentID)
 				break
 			}
-			time.Sleep(100 * time.Millisecond)
+			return nil, err
 		}
 
 		if parentEvent == nil {
-			log.Printf("[ANÁLISE DE CAUSALIDADE] Pai (PPID: %d) não encontrado no banco de dados após múltiplas tentativas.", currentEvent.ParentID)
 			break
 		}
 
