@@ -1,4 +1,4 @@
-// Arquivo: imunno-agent/main.go (Corrigido para a nova estrutura de pastas)
+// Arquivo: imunno-agent/main.go (Versão Final e Corrigida)
 package main
 
 import (
@@ -14,30 +14,24 @@ import (
 	"path/filepath"
 	"time"
 
-	// A linha 'import "imunno-agent/config"' foi REMOVIDA daqui,
-	// pois agora os arquivos estão no mesmo pacote.
-
 	"github.com/gorilla/websocket"
 )
 
-// Agora ele encontra 'Config' diretamente, pois está no mesmo pacote.
+// As structs duplicadas foram REMOVIDAS daqui.
+// Elas agora vivem em events.go.
+
 var cfg *Config
 var arquivosVigiados = make(map[string]string)
 
 func main() {
 	var err error
-	// Agora ele encontra 'LoadConfig' diretamente.
 	cfg, err = LoadConfig()
 	if err != nil {
 		log.Fatalf("Erro fatal ao carregar a configuração: %v", err)
 	}
 
-	// O resto do seu código main, sem alterações...
-	processEventsChan := make(chan ProcessEvent)
-
 	go connectAndListen()
-	go IniciarMonitorDeAuditoria(processEventsChan)
-	go listenForProcessEvents(processEventsChan)
+	go IniciarMonitorDeAuditoria() // A chamada agora está correta, sem argumentos.
 
 	log.Printf("Iniciando monitoramento de arquivos em: %s (intervalo: 5 segundos)", cfg.Monitoring.WatchDir)
 	for {
@@ -46,24 +40,13 @@ func main() {
 	}
 }
 
-// --- NENHUMA ALTERAÇÃO DAQUI PARA BAIXO ---
-// Todas as suas outras funções permanecem exatamente as mesmas.
-
-func listenForProcessEvents(channel <-chan ProcessEvent) {
-	for {
-		event := <-channel
-		log.Printf("+++ AUDIT: Novo processo detectado (via channel): PID=%d, Comando='%s'", event.ProcessID, event.Command)
-		event.AgentID = cfg.Agent.ID
-		sendProcessEvent(event)
-	}
-}
-
+// O resto do seu código permanece exatamente o mesmo
 func patrulharDiretorio(dirPath string) {
 	filepath.WalkDir(dirPath, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
-		if !d.IsDir() && filepath.Ext(path) == ".php" {
+		if !d.IsDir() && (filepath.Ext(path) == ".php" || filepath.Ext(path) == ".js") {
 			hashAtual, err := calcularHash(path)
 			if err != nil {
 				log.Printf("!!! Não foi possível calcular o hash de %s: %v", path, err)
@@ -148,10 +131,31 @@ func handleQuarantineCommand(filePath string) {
 		log.Printf("!!! ERRO QUARENTENA: Não foi possível criar o diretório: %v", err)
 		return
 	}
+	sourceFile, err := os.Open(filePath)
+	if err != nil {
+		log.Printf("!!! ERRO QUARENTENA: Não foi possível abrir o arquivo de origem %s: %v", filePath, err)
+		return
+	}
+	defer sourceFile.Close()
 	fileName := filepath.Base(filePath)
 	destPath := filepath.Join(cfg.Agent.QuarantineDir, fileName)
-	if err := os.Rename(filePath, destPath); err != nil {
-		log.Printf("!!! ERRO QUARENTENA: Falha ao mover o arquivo %s: %v", filePath, err)
+	destFile, err := os.Create(destPath)
+	if err != nil {
+		log.Printf("!!! ERRO QUARENTENA: Não foi possível criar o arquivo de destino %s: %v", destPath, err)
+		return
+	}
+	defer destFile.Close()
+	_, err = io.Copy(destFile, sourceFile)
+	if err != nil {
+		os.Remove(destPath)
+		log.Printf("!!! ERRO QUARENTENA: Falha ao copiar o conteúdo para o arquivo de quarentena: %v", err)
+		return
+	}
+	sourceFile.Close()
+	destFile.Close()
+	err = os.Remove(filePath)
+	if err != nil {
+		log.Printf("!!! ERRO QUARENTENA: Falha ao apagar o arquivo original %s após a cópia bem-sucedida: %v", filePath, err)
 		return
 	}
 	log.Printf("+++ Arquivo %s movido com sucesso para a quarentena em %s", filePath, destPath)
@@ -163,12 +167,10 @@ func processAndSendFileEvent(filePath string, eventType string) {
 		log.Printf("Aviso: Não foi possível ler o arquivo %s: %v", filePath, err)
 		return
 	}
-
 	hash := sha256.New()
 	hash.Write(contentBytes)
 	hashString := fmt.Sprintf("%x", hash.Sum(nil))
 	hostname, _ := os.Hostname()
-
 	eventData := FileEvent{
 		AgentID:        cfg.Agent.ID,
 		Hostname:       hostname,
@@ -178,7 +180,6 @@ func processAndSendFileEvent(filePath string, eventType string) {
 		EventType:      eventType,
 		Content:        string(contentBytes),
 	}
-
 	jsonData, err := json.Marshal(eventData)
 	if err != nil {
 		log.Printf("Erro ao converter evento de arquivo para JSON: %v", err)
@@ -209,6 +210,6 @@ func sendProcessEvent(event ProcessEvent) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusAccepted {
-		log.Printf("O collector respondeu com status inesperado para evento de processo: %s", resp.Status)
+		log.Printf("O collector respondeu com um status inesperado para o evento de processo: %s", resp.Status)
 	}
 }

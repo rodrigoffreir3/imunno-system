@@ -14,6 +14,12 @@ services:
       - ./postgres-init/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - imunno-net
+    # Healthcheck mantido aqui, pois é a dependência mais crítica.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U imunno_user -d imunno_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   imunno_ml:
     build:
@@ -33,8 +39,12 @@ services:
     container_name: imunno_collector
     restart: always
     depends_on:
-      - postgres
-      - imunno_ml
+      # A dependência do banco de dados agora espera que ele esteja saudável.
+      postgres:
+        condition: service_healthy
+      # Para o ml-service, basta que ele tenha iniciado.
+      imunno_ml:
+        condition: service_started
     environment:
       ENABLE_QUARANTINE: "true"
       DB_URL: "postgres://imunno_user:imunno_pass@postgres:5432/imunno_db?sslmode=disable"
@@ -49,14 +59,17 @@ services:
       context: ./imunno-agent
     container_name: imunno_agent
     restart: always
+    # A dependência aqui é simples: apenas espere o collector iniciar.
     depends_on:
       - imunno_collector
     environment:
       COLLECTOR_URL: "ws://imunno_collector:8080/ws"
       AGENT_ID: "docker-agent-001"
-      AGENT_WATCH_DIR: "/var/log/audit"
+      AGENT_WATCH_DIR: "/app/wordpress" 
       AGENT_QUARANTINE_DIR: "/app/quarantine"
     volumes:
+      - ./wordpress:/app/wordpress
+      - ./imunno-agent/quarantine:/app/quarantine
       - ./audit/audit.log:/var/log/audit/audit.log
     cap_add:
       - AUDIT_WRITE
@@ -68,7 +81,6 @@ services:
     build:
       context: ./tools/simulador-malicioso
     container_name: imunno_simulador
-    # ALTERAÇÃO: 'restart' removido e 'profiles' adicionado
     profiles:
       - tools
     depends_on:
@@ -82,7 +94,6 @@ services:
     build:
       context: ./tools/simulador-bem
     container_name: imunno_simulador_bem
-    # ALTERAÇÃO: 'restart' removido e 'profiles' adicionado
     profiles:
       - tools
     depends_on:
@@ -96,7 +107,6 @@ services:
     build:
       context: ./tools/simulador-causalidade
     container_name: imunno_simulador_causalidade
-    # ALTERAÇÃO: 'restart' removido e 'profiles' adicionado
     profiles:
       - tools
     depends_on:
