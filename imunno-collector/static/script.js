@@ -10,39 +10,96 @@ document.addEventListener('DOMContentLoaded', () => {
     const threatsNeutralizedEl = document.getElementById('threats-neutralized');
     const lastThreatEl = document.getElementById('last-threat');
 
+    // Mapa para rastrear as linhas da tabela de processos pelo ID do evento do banco de dados
+    const processEventRows = new Map();
+
     // Variáveis para contar as métricas
     let totalEvents = 0;
     let totalThreats = 0;
 
-    // Função para determinar a classe de cor com base na pontuação de ameaça
     const getThreatLevelClass = (score) => {
         if (score >= 70) return 'threat-high';
         if (score >= 40) return 'threat-medium';
         if (score > 0) return 'threat-low';
         return '';
     };
-
-    // Função genérica para adicionar um evento a uma tabela e atualizar métricas
-    const addEventToTable = (event, tableBody, createRowHTML) => {
+    
+    const updateMetrics = (event, isNewThreat) => {
         totalEvents++;
         eventsTodayEl.textContent = totalEvents;
 
         const score = event.threat_score || 0;
-        if (score > 0) {
+        if (isNewThreat && score > 0) {
             totalThreats++;
             threatsNeutralizedEl.textContent = totalThreats;
-            // Atualiza a última ameaça com o caminho do arquivo ou o comando
             const threatIdentifier = event.file_path || event.command;
-            lastThreatEl.textContent = threatIdentifier.split('/').pop(); // Mostra apenas o nome do arquivo/comando
+            lastThreatEl.textContent = threatIdentifier.split('/').pop();
         }
-
-        const row = document.createElement('tr');
-        row.className = getThreatLevelClass(score);
-        row.innerHTML = createRowHTML(event);
-        tableBody.prepend(row);
     };
 
-    // --- CONEXÃO WEBSOCKET EM TEMPO REAL ---
+    const handleFileEvent = (event) => {
+        updateMetrics(event, true);
+        const row = document.createElement('tr');
+        row.className = getThreatLevelClass(event.threat_score || 0);
+        const timestamp = new Date(event.timestamp).toLocaleString('pt-BR');
+        row.innerHTML = `
+            <td>${timestamp}</td>
+            <td>${event.hostname || 'N/A'}</td>
+            <td>${event.file_path || 'N/A'}</td>
+            <td>${event.threat_score || 0}</td>
+            <td><span class="details-json">${JSON.stringify(event.analysis_findings || {})}</span></td>
+        `;
+        fileEventsBody.prepend(row);
+    };
+
+    const handleProcessEvent = (event) => {
+        const timestamp = new Date(event.timestamp).toLocaleString('pt-BR');
+        const score = event.threat_score || 0;
+        let causalityInfo = 'N/A';
+        
+        // Se o score for alto, presumimos que a causalidade foi detectada no backend.
+        if (score >= 70) {
+            const parts = (event.command || '').split(' ');
+            if (parts.length > 1) {
+                // Pega o nome do arquivo do comando e o exibe.
+                causalityInfo = `<span class="text-yellow-400 font-bold">${parts[1].split('/').pop()}</span>`;
+            }
+        }
+
+        // Verifica se já existe uma linha para este evento (pelo ID do evento no DB)
+        if (processEventRows.has(event.id)) {
+            // Se já existe, apenas atualiza a linha
+            const row = processEventRows.get(event.id);
+            const oldThreatScore = parseInt(row.cells[5].textContent);
+
+            row.className = getThreatLevelClass(score);
+            row.cells[5].textContent = score;
+            row.cells[6].innerHTML = causalityInfo;
+
+            // Se o score aumentou e antes era 0, consideramos uma nova ameaça
+            if (score > oldThreatScore && oldThreatScore === 0) {
+                updateMetrics(event, true);
+            }
+        } else {
+            // Se não existe, cria uma nova linha e a adiciona
+            updateMetrics(event, score > 0);
+            const row = document.createElement('tr');
+            row.className = getThreatLevelClass(score);
+            row.innerHTML = `
+                <td>${timestamp}</td>
+                <td>${event.hostname || 'N/A'}</td>
+                <td>${event.process_id || 'N/A'}</td>
+                <td>${event.command || 'N/A'}</td>
+                <td>${event.username || 'N/A'}</td>
+                <td>${score}</td>
+                <td>${causalityInfo}</td>
+            `;
+            processEventsBody.prepend(row);
+            // Armazena a referência da linha no mapa usando o ID único do banco
+            processEventRows.set(event.id, row);
+        }
+    };
+
     const connectWebSocket = () => {
         const isSecure = window.location.protocol === 'https:';
         const socketProtocol = isSecure ? 'wss://' : 'ws://';
@@ -59,38 +116,10 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.onmessage = (message) => {
             try {
                 const event = JSON.parse(message.data);
-                const timestamp = new Date(event.timestamp).toLocaleString('pt-BR');
-
-                if (event.file_path) { // É um evento de arquivo
-                    addEventToTable(event, fileEventsBody, (e) => `
-                        <td>${timestamp}</td>
-                        <td>${e.hostname || 'N/A'}</td>
-                        <td>${e.file_path || 'N/A'}</td>
-                        <td>${e.threat_score || 0}</td>
-                        <td><span class="details-json">${JSON.stringify(e.analysis_findings || {})}</span></td>
-                    `);
-                } else if (event.process_id) { // É um evento de processo
-                    addEventToTable(event, processEventsBody, (e) => {
-                        let causalityInfo = 'N/A';
-                        // --- LÓGICA DE CAUSALIDADE VISUAL ADICIONADA AQUI ---
-                        // Se o score for alto, presumimos que a causalidade foi detectada no backend.
-                        if ((e.threat_score || 0) >= 70) {
-                            const parts = (e.command || '').split(' ');
-                            if (parts.length > 1) {
-                                // Pega o nome do arquivo do comando e o exibe.
-                                causalityInfo = `<span class="text-yellow-400 font-bold">${parts[1].split('/').pop()}</span>`;
-                            }
-                        }
-                        return `
-                            <td>${timestamp}</td>
-                            <td>${e.hostname || 'N/A'}</td>
-                            <td>${e.process_id || 'N/A'}</td>
-                            <td>${e.command || 'N/A'}</td>
-                            <td>${e.username || 'N/A'}</td>
-                            <td>${e.threat_score || 0}</td>
-                            <td>${causalityInfo}</td>
-                        `;
-                    });
+                if (event.file_path) {
+                    handleFileEvent(event);
+                } else if (event.process_id) {
+                    handleProcessEvent(event);
                 }
             } catch (error) {
                 console.error('Erro ao processar mensagem do WebSocket:', error);
@@ -110,6 +139,5 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     };
 
-    // Inicia a conexão
     connectWebSocket();
 });

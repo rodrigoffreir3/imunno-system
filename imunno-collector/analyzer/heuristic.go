@@ -3,15 +3,12 @@
 package analyzer
 
 import (
+	"encoding/json" // Import adicionado para a nova estrutura de findings
 	"regexp"
-	"strings"
 )
 
 // AnalysisResult representa o resultado de uma análise heurística.
-type AnalysisResult struct {
-	ThreatScore int
-	Findings    []string
-}
+// A struct foi removida daqui pois a função AnalyzeContent agora retorna o JSON diretamente.
 
 // RegraHeuristica define uma regra com padrão, descrição e pontuação.
 type RegraHeuristica struct {
@@ -27,6 +24,13 @@ var regrasDeArquivo = []RegraHeuristica{
 		Padrao:    regexp.MustCompile(`eval\s*\(`),
 		Pontuacao: 50,
 	},
+	// --- NOVA REGRA ADICIONADA AQUI ---
+	{
+		Descricao: "Execução de função a partir de variável de input (Variable Function)",
+		Padrao:    regexp.MustCompile(`\$_[A-Z]{3,}\s*\[.*?\]\s*\(.*\)`),
+		Pontuacao: 45,
+	},
+	// --- FIM DA NOVA REGRA ---
 	{
 		Descricao: "Funções de execução de comando detectadas",
 		Padrao:    regexp.MustCompile(`(shell_exec|passthru|system|exec|popen|proc_open)\s*\(`),
@@ -56,6 +60,7 @@ var regrasDeArquivo = []RegraHeuristica{
 
 // >>>>>>>>>>>>>>>> REGRAS DE PROCESSO <<<<<<<<<<<<<<<<
 var regrasDeProcesso = []RegraHeuristica{
+	// Suas regras de processo permanecem intactas
 	{
 		Descricao: "Download de arquivos (curl/wget)",
 		Padrao:    regexp.MustCompile(`(curl|wget)\s`),
@@ -83,33 +88,43 @@ var regrasDeProcesso = []RegraHeuristica{
 	},
 }
 
-// AnalisarConteudo analisa um conteúdo de arquivo como string.
-func AnalisarConteudo(conteudo string) AnalysisResult {
-	var resultado AnalysisResult
+// AnalisarConteudo foi unificada em AnalyzeContent para corresponder ao main.go
+// ... (funções antigas removidas para limpeza)
+
+// AnalyzeContent é a função esperada pelo main.go — ela analisa e retorna o score e os achados em JSON.
+func AnalyzeContent(content []byte) (int, []byte) {
+	scoreTotal := 0
+	var findings []string
+
+	conteudoStr := string(content) // Converte para string uma única vez
+
 	for _, regra := range regrasDeArquivo {
-		if regra.Padrao.MatchString(conteudo) {
-			resultado.ThreatScore += regra.Pontuacao
-			resultado.Findings = append(resultado.Findings, regra.Descricao)
+		if regra.Padrao.MatchString(conteudoStr) {
+			scoreTotal += regra.Pontuacao
+			findings = append(findings, regra.Descricao)
 		}
 	}
-	return resultado
+
+	// Estrutura para os achados em JSON, para ser consistente
+	analysisResult := struct {
+		RegrasAcionadas []string `json:"regras_acionadas"`
+	}{
+		RegrasAcionadas: findings,
+	}
+
+	jsonFindings, _ := json.Marshal(analysisResult)
+	return scoreTotal, jsonFindings
 }
 
-// AnalisarProcesso analisa um comando de processo.
-func AnalisarProcesso(comando string) AnalysisResult {
-	var resultado AnalysisResult
+// AnalisarProcesso permanece como está no seu código original
+func AnalisarProcesso(comando string) (int, []string) {
+	scoreTotal := 0
+	var findings []string
 	for _, regra := range regrasDeProcesso {
 		if regra.Padrao.MatchString(comando) {
-			resultado.ThreatScore += regra.Pontuacao
-			resultado.Findings = append(resultado.Findings, regra.Descricao)
+			scoreTotal += regra.Pontuacao
+			findings = append(findings, regra.Descricao)
 		}
 	}
-	return resultado
-}
-
-// AnalyzeContent é a função esperada pelo main.go — ela converte []byte em análise.
-func AnalyzeContent(content []byte) (int, []byte) {
-	resultado := AnalisarConteudo(string(content))
-	findingsJSON := []byte(`["` + strings.Join(resultado.Findings, `","`) + `"]`)
-	return resultado.ThreatScore, findingsJSON
+	return scoreTotal, findings
 }
