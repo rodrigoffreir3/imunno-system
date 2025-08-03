@@ -3,12 +3,9 @@
 package analyzer
 
 import (
-	"encoding/json" // Import adicionado para a nova estrutura de findings
+	"encoding/json"
 	"regexp"
 )
-
-// AnalysisResult representa o resultado de uma análise heurística.
-// A struct foi removida daqui pois a função AnalyzeContent agora retorna o JSON diretamente.
 
 // RegraHeuristica define uma regra com padrão, descrição e pontuação.
 type RegraHeuristica struct {
@@ -24,13 +21,15 @@ var regrasDeArquivo = []RegraHeuristica{
 		Padrao:    regexp.MustCompile(`eval\s*\(`),
 		Pontuacao: 50,
 	},
-	// --- NOVA REGRA ADICIONADA AQUI ---
+	// --- NOVA REGRA CORRIGIDA AQUI ---
 	{
 		Descricao: "Execução de função a partir de variável de input (Variable Function)",
-		Padrao:    regexp.MustCompile(`\$_[A-Z]{3,}\s*\[.*?\]\s*\(.*\)`),
+		// Este regex mais simples e correto procura pelo padrão de uma variável
+		// sendo usada como função, que é altamente suspeito.
+		Padrao:    regexp.MustCompile(`\$\w+\s*\(`),
 		Pontuacao: 45,
 	},
-	// --- FIM DA NOVA REGRA ---
+	// --- FIM DA CORREÇÃO ---
 	{
 		Descricao: "Funções de execução de comando detectadas",
 		Padrao:    regexp.MustCompile(`(shell_exec|passthru|system|exec|popen|proc_open)\s*\(`),
@@ -88,15 +87,12 @@ var regrasDeProcesso = []RegraHeuristica{
 	},
 }
 
-// AnalisarConteudo foi unificada em AnalyzeContent para corresponder ao main.go
-// ... (funções antigas removidas para limpeza)
-
 // AnalyzeContent é a função esperada pelo main.go — ela analisa e retorna o score e os achados em JSON.
 func AnalyzeContent(content []byte) (int, []byte) {
 	scoreTotal := 0
 	var findings []string
 
-	conteudoStr := string(content) // Converte para string uma única vez
+	conteudoStr := string(content)
 
 	for _, regra := range regrasDeArquivo {
 		if regra.Padrao.MatchString(conteudoStr) {
@@ -105,7 +101,6 @@ func AnalyzeContent(content []byte) (int, []byte) {
 		}
 	}
 
-	// Estrutura para os achados em JSON, para ser consistente
 	analysisResult := struct {
 		RegrasAcionadas []string `json:"regras_acionadas"`
 	}{
