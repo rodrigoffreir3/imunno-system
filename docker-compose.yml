@@ -14,7 +14,7 @@ services:
       - ./postgres-init/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - imunno-net
-    # Healthcheck mantido aqui, pois é a dependência mais crítica.
+    # O healthcheck do postgres é o único que realmente precisamos, pois é uma dependência crítica.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U imunno_user -d imunno_db"]
       interval: 10s
@@ -42,7 +42,6 @@ services:
       # A dependência do banco de dados agora espera que ele esteja saudável.
       postgres:
         condition: service_healthy
-      # Para o ml-service, basta que ele tenha iniciado.
       imunno_ml:
         condition: service_started
     environment:
@@ -53,13 +52,14 @@ services:
       - "8080:8080"
     networks:
       - imunno-net
+    # O healthcheck problemático foi REMOVIDO daqui.
 
   imunno_agent:
     build:
       context: ./imunno-agent
     container_name: imunno_agent
     restart: always
-    # A dependência aqui é simples: apenas espere o collector iniciar.
+    # A dependência aqui voltou a ser simples: apenas espere o collector iniciar.
     depends_on:
       - imunno_collector
     environment:
@@ -77,6 +77,7 @@ services:
     networks:
       - imunno-net
 
+  # Seus simuladores permanecem exatamente como estão, já corretos.
   imunno_simulador:
     build:
       context: ./tools/simulador-malicioso
