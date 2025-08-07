@@ -14,7 +14,6 @@ services:
       - ./postgres-init/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - imunno-net
-    # O healthcheck do postgres é o único que realmente precisamos, pois é uma dependência crítica.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U imunno_user -d imunno_db"]
       interval: 10s
@@ -39,7 +38,6 @@ services:
     container_name: imunno_collector
     restart: always
     depends_on:
-      # A dependência do banco de dados agora espera que ele esteja saudável.
       postgres:
         condition: service_healthy
       imunno_ml:
@@ -52,14 +50,12 @@ services:
       - "8080:8080"
     networks:
       - imunno-net
-    # O healthcheck problemático foi REMOVIDO daqui.
 
   imunno_agent:
     build:
       context: ./imunno-agent
     container_name: imunno_agent
     restart: always
-    # A dependência aqui voltou a ser simples: apenas espere o collector iniciar.
     depends_on:
       - imunno_collector
     environment:
@@ -77,7 +73,6 @@ services:
     networks:
       - imunno-net
 
-  # Seus simuladores permanecem exatamente como estão, já corretos.
   imunno_simulador:
     build:
       context: ./tools/simulador-malicioso
@@ -114,6 +109,26 @@ services:
       - imunno_collector
     environment:
         COLLECTOR_URL: "http://imunno_collector:8080"
+    networks:
+      - imunno-net
+
+  # --- O SERVIÇO QUE FALTAVA FOI ADICIONADO AQUI ---
+  wordpress_site:
+    image: wordpress:latest
+    container_name: wordpress_site
+    restart: always
+    ports:
+      - "8081:80"
+    volumes:
+      - ./wordpress:/var/www/html
+    environment:
+      WORDPRESS_DB_HOST: imunno_postgres # Aponta para o seu serviço postgres
+      WORDPRESS_DB_USER: imunno_user
+      WORDPRESS_DB_PASSWORD: imunno_pass
+      WORDPRESS_DB_NAME: imunno_db
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - imunno-net
 
