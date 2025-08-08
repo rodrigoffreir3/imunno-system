@@ -1,212 +1,177 @@
 <?php
 /**
- * Dashboard Administration Screen
+ * Used to set up all core blocks used with the block editor.
  *
  * @package WordPress
- * @subpackage Administration
  */
 
-/** Load WordPress Bootstrap */
-require_once __DIR__ . '/admin.php';
-
-/** Load WordPress dashboard API */
-require_once ABSPATH . 'wp-admin/includes/dashboard.php';
-
-wp_dashboard_setup();
-
-wp_enqueue_script( 'dashboard' );
-
-if ( current_user_can( 'install_plugins' ) ) {
-	wp_enqueue_script( 'plugin-install' );
-	wp_enqueue_script( 'updates' );
-}
-if ( current_user_can( 'upload_files' ) ) {
-	wp_enqueue_script( 'media-upload' );
-}
-add_thickbox();
-
-if ( wp_is_mobile() ) {
-	wp_enqueue_script( 'jquery-touch-punch' );
+// Don't load directly.
+if ( ! defined( 'ABSPATH' ) ) {
+	die( '-1' );
 }
 
-// Used in the HTML title tag.
-$title       = __( 'Dashboard' );
-$parent_file = 'index.php';
+define( 'BLOCKS_PATH', ABSPATH . WPINC . '/blocks/' );
 
-$help  = '<p>' . __( 'Welcome to your WordPress Dashboard!' ) . '</p>';
-$help .= '<p>' . __( 'The Dashboard is the first place you will come to every time you log into your site. It is where you will find all your WordPress tools. If you need help, just click the &#8220;Help&#8221; tab above the screen title.' ) . '</p>';
+// Include files required for core blocks registration.
+require BLOCKS_PATH . 'legacy-widget.php';
+require BLOCKS_PATH . 'widget-group.php';
+require BLOCKS_PATH . 'require-dynamic-blocks.php';
 
-$screen = get_current_screen();
+/**
+ * Registers core block style handles.
+ *
+ * While {@see register_block_style_handle()} is typically used for that, the way it is
+ * implemented is inefficient for core block styles. Registering those style handles here
+ * avoids unnecessary logic and filesystem lookups in the other function.
+ *
+ * @since 6.3.0
+ */
+function register_core_block_style_handles() {
+	$wp_version = wp_get_wp_version();
 
-$screen->add_help_tab(
-	array(
-		'id'      => 'overview',
-		'title'   => __( 'Overview' ),
-		'content' => $help,
-	)
-);
+	if ( ! wp_should_load_separate_core_block_assets() ) {
+		return;
+	}
 
-// Help tabs.
-
-$help  = '<p>' . __( 'The left-hand navigation menu provides links to all of the WordPress administration screens, with submenu items displayed on hover. You can minimize this menu to a narrow icon strip by clicking on the Collapse Menu arrow at the bottom.' ) . '</p>';
-$help .= '<p>' . __( 'Links in the Toolbar at the top of the screen connect your dashboard and the front end of your site, and provide access to your profile and helpful WordPress information.' ) . '</p>';
-
-$screen->add_help_tab(
-	array(
-		'id'      => 'help-navigation',
-		'title'   => __( 'Navigation' ),
-		'content' => $help,
-	)
-);
-
-$help  = '<p>' . __( 'You can use the following controls to arrange your Dashboard screen to suit your workflow. This is true on most other administration screens as well.' ) . '</p>';
-$help .= '<p>' . __( '<strong>Screen Options</strong> &mdash; Use the Screen Options tab to choose which Dashboard boxes to show.' ) . '</p>';
-$help .= '<p>' . __( '<strong>Drag and Drop</strong> &mdash; To rearrange the boxes, drag and drop by clicking on the title bar of the selected box and releasing when you see a gray dotted-line rectangle appear in the location you want to place the box.' ) . '</p>';
-$help .= '<p>' . __( '<strong>Box Controls</strong> &mdash; Click the title bar of the box to expand or collapse it. Some boxes added by plugins may have configurable content, and will show a &#8220;Configure&#8221; link in the title bar if you hover over it.' ) . '</p>';
-
-$screen->add_help_tab(
-	array(
-		'id'      => 'help-layout',
-		'title'   => __( 'Layout' ),
-		'content' => $help,
-	)
-);
-
-$help = '<p>' . __( 'The boxes on your Dashboard screen are:' ) . '</p>';
-
-if ( current_user_can( 'edit_theme_options' ) ) {
-	$help .= '<p>' . __( '<strong>Welcome</strong> &mdash; Shows links for some of the most common tasks when setting up a new site.' ) . '</p>';
-}
-
-if ( current_user_can( 'view_site_health_checks' ) ) {
-	$help .= '<p>' . __( '<strong>Site Health Status</strong> &mdash; Informs you of any potential issues that should be addressed to improve the performance or security of your website.' ) . '</p>';
-}
-
-if ( current_user_can( 'edit_posts' ) ) {
-	$help .= '<p>' . __( '<strong>At a Glance</strong> &mdash; Displays a summary of the content on your site and identifies which theme and version of WordPress you are using.' ) . '</p>';
-}
-
-$help .= '<p>' . __( '<strong>Activity</strong> &mdash; Shows the upcoming scheduled posts, recently published posts, and the most recent comments on your posts and allows you to moderate them.' ) . '</p>';
-
-if ( is_blog_admin() && current_user_can( 'edit_posts' ) ) {
-	$help .= '<p>' . __( "<strong>Quick Draft</strong> &mdash; Allows you to create a new post and save it as a draft. Also displays links to the 3 most recent draft posts you've started." ) . '</p>';
-}
-
-$help .= '<p>' . sprintf(
-	/* translators: %s: WordPress Planet URL. */
-	__( '<strong>WordPress Events and News</strong> &mdash; Upcoming events near you as well as the latest news from the official WordPress project and the <a href="%s">WordPress Planet</a>.' ),
-	__( 'https://planet.wordpress.org/' )
-) . '</p>';
-
-$screen->add_help_tab(
-	array(
-		'id'      => 'help-content',
-		'title'   => __( 'Content' ),
-		'content' => $help,
-	)
-);
-
-unset( $help );
-
-$wp_version = get_bloginfo( 'version', 'display' );
-/* translators: %s: WordPress version. */
-$wp_version_text = sprintf( __( 'Version %s' ), $wp_version );
-$is_dev_version  = preg_match( '/alpha|beta|RC/', $wp_version );
-
-if ( ! $is_dev_version ) {
-	$version_url = sprintf(
-		/* translators: %s: WordPress version. */
-		esc_url( __( 'https://wordpress.org/documentation/wordpress-version/version-%s/' ) ),
-		sanitize_title( $wp_version )
+	$blocks_url   = includes_url( 'blocks/' );
+	$suffix       = wp_scripts_get_suffix();
+	$wp_styles    = wp_styles();
+	$style_fields = array(
+		'style'       => 'style',
+		'editorStyle' => 'editor',
 	);
 
-	$wp_version_text = sprintf(
-		'<a href="%1$s">%2$s</a>',
-		$version_url,
-		$wp_version_text
-	);
-}
+	static $core_blocks_meta;
+	if ( ! $core_blocks_meta ) {
+		$core_blocks_meta = require BLOCKS_PATH . 'blocks-json.php';
+	}
 
-$screen->set_help_sidebar(
-	'<p><strong>' . __( 'For more information:' ) . '</strong></p>' .
-	'<p>' . __( '<a href="https://wordpress.org/documentation/article/dashboard-screen/">Documentation on Dashboard</a>' ) . '</p>' .
-	'<p>' . __( '<a href="https://wordpress.org/support/forums/">Support forums</a>' ) . '</p>' .
-	'<p>' . $wp_version_text . '</p>'
-);
+	$files          = false;
+	$transient_name = 'wp_core_block_css_files';
 
-require_once ABSPATH . 'wp-admin/admin-header.php';
-?>
+	/*
+	 * Ignore transient cache when the development mode is set to 'core'. Why? To avoid interfering with
+	 * the core developer's workflow.
+	 */
+	$can_use_cached = ! wp_is_development_mode( 'core' );
 
-<div class="wrap">
-	<h1><?php echo esc_html( $title ); ?></h1>
+	if ( $can_use_cached ) {
+		$cached_files = get_transient( $transient_name );
 
-	<?php
-	if ( ! empty( $_GET['admin_email_remind_later'] ) ) :
-		/** This filter is documented in wp-login.php */
-		$remind_interval = (int) apply_filters( 'admin_email_remind_interval', 3 * DAY_IN_SECONDS );
-		$postponed_time  = get_option( 'admin_email_lifespan' );
+		// Check the validity of cached values by checking against the current WordPress version.
+		if (
+			is_array( $cached_files )
+			&& isset( $cached_files['version'] )
+			&& $cached_files['version'] === $wp_version
+			&& isset( $cached_files['files'] )
+		) {
+			$files = $cached_files['files'];
+		}
+	}
 
-		/*
-		 * Calculate how many seconds it's been since the reminder was postponed.
-		 * This allows us to not show it if the query arg is set, but visited due to caches, bookmarks or similar.
-		 */
-		$time_passed = time() - ( $postponed_time - $remind_interval );
+	if ( ! $files ) {
+		$files = glob( wp_normalize_path( BLOCKS_PATH . '**/**.css' ) );
 
-		// Only show the dashboard notice if it's been less than a minute since the message was postponed.
-		if ( $time_passed < MINUTE_IN_SECONDS ) :
-			$message = sprintf(
-				/* translators: %s: Human-readable time interval. */
-				__( 'The admin email verification page will reappear after %s.' ),
-				human_time_diff( time() + $remind_interval )
-			);
-			wp_admin_notice(
-				$message,
+		// Normalize BLOCKS_PATH prior to substitution for Windows environments.
+		$normalized_blocks_path = wp_normalize_path( BLOCKS_PATH );
+
+		$files = array_map(
+			static function ( $file ) use ( $normalized_blocks_path ) {
+				return str_replace( $normalized_blocks_path, '', $file );
+			},
+			$files
+		);
+
+		// Save core block style paths in cache when not in development mode.
+		if ( $can_use_cached ) {
+			set_transient(
+				$transient_name,
 				array(
-					'type'        => 'success',
-					'dismissible' => true,
+					'version' => $wp_version,
+					'files'   => $files,
 				)
 			);
-		endif;
-	endif;
-	?>
-
-<?php
-if ( has_action( 'welcome_panel' ) && current_user_can( 'edit_theme_options' ) ) :
-	$classes = 'welcome-panel';
-
-	$option = (int) get_user_meta( get_current_user_id(), 'show_welcome_panel', true );
-	// 0 = hide, 1 = toggled to show or single site creator, 2 = multisite site owner.
-	$hide = ( 0 === $option || ( 2 === $option && wp_get_current_user()->user_email !== get_option( 'admin_email' ) ) );
-	if ( $hide ) {
-		$classes .= ' hidden';
+		}
 	}
-	?>
 
-	<div id="welcome-panel" class="<?php echo esc_attr( $classes ); ?>">
-		<?php wp_nonce_field( 'welcome-panel-nonce', 'welcomepanelnonce', false ); ?>
-		<a class="welcome-panel-close" href="<?php echo esc_url( admin_url( '?welcome=0' ) ); ?>" aria-label="<?php esc_attr_e( 'Dismiss the welcome panel' ); ?>"><?php _e( 'Dismiss' ); ?></a>
-		<?php
-		/**
-		 * Fires when adding content to the welcome panel on the admin dashboard.
-		 *
-		 * To remove the default welcome panel, use remove_action():
-		 *
-		 *     remove_action( 'welcome_panel', 'wp_welcome_panel' );
-		 *
-		 * @since 3.5.0
-		 */
-		do_action( 'welcome_panel' );
-		?>
-	</div>
-<?php endif; ?>
+	$register_style = static function ( $name, $filename, $style_handle ) use ( $blocks_url, $suffix, $wp_styles, $files ) {
+		$style_path = "{$name}/{$filename}{$suffix}.css";
+		$path       = wp_normalize_path( BLOCKS_PATH . $style_path );
 
-	<div id="dashboard-widgets-wrap">
-	<?php wp_dashboard(); ?>
-	</div><!-- dashboard-widgets-wrap -->
+		if ( ! in_array( $style_path, $files, true ) ) {
+			$wp_styles->add(
+				$style_handle,
+				false
+			);
+			return;
+		}
 
-</div><!-- wrap -->
+		$wp_styles->add( $style_handle, $blocks_url . $style_path );
+		$wp_styles->add_data( $style_handle, 'path', $path );
 
-<?php
-wp_print_community_events_templates();
+		$rtl_file = "{$name}/{$filename}-rtl{$suffix}.css";
+		if ( is_rtl() && in_array( $rtl_file, $files, true ) ) {
+			$wp_styles->add_data( $style_handle, 'rtl', 'replace' );
+			$wp_styles->add_data( $style_handle, 'suffix', $suffix );
+			$wp_styles->add_data( $style_handle, 'path', str_replace( "{$suffix}.css", "-rtl{$suffix}.css", $path ) );
+		}
+	};
 
-require_once ABSPATH . 'wp-admin/admin-footer.php';
+	foreach ( $core_blocks_meta as $name => $schema ) {
+		/** This filter is documented in wp-includes/blocks.php */
+		$schema = apply_filters( 'block_type_metadata', $schema );
+
+		// Backfill these properties similar to `register_block_type_from_metadata()`.
+		if ( ! isset( $schema['style'] ) ) {
+			$schema['style'] = "wp-block-{$name}";
+		}
+		if ( ! isset( $schema['editorStyle'] ) ) {
+			$schema['editorStyle'] = "wp-block-{$name}-editor";
+		}
+
+		// Register block theme styles.
+		$register_style( $name, 'theme', "wp-block-{$name}-theme" );
+
+		foreach ( $style_fields as $style_field => $filename ) {
+			$style_handle = $schema[ $style_field ];
+			if ( is_array( $style_handle ) ) {
+				continue;
+			}
+			$register_style( $name, $filename, $style_handle );
+		}
+	}
+}
+add_action( 'init', 'register_core_block_style_handles', 9 );
+
+/**
+ * Registers core block types using metadata files.
+ * Dynamic core blocks are registered separately.
+ *
+ * @since 5.5.0
+ */
+function register_core_block_types_from_metadata() {
+	$block_folders = require BLOCKS_PATH . 'require-static-blocks.php';
+	foreach ( $block_folders as $block_folder ) {
+		register_block_type_from_metadata(
+			BLOCKS_PATH . $block_folder
+		);
+	}
+}
+add_action( 'init', 'register_core_block_types_from_metadata' );
+
+/**
+ * Registers the core block metadata collection.
+ *
+ * This function is hooked into the 'init' action with a priority of 9,
+ * ensuring that the core block metadata is registered before the regular
+ * block initialization that happens at priority 10.
+ *
+ * @since 6.7.0
+ */
+function wp_register_core_block_metadata_collection() {
+	wp_register_block_metadata_collection(
+		BLOCKS_PATH,
+		BLOCKS_PATH . 'blocks-json.php'
+	);
+}
+add_action( 'init', 'wp_register_core_block_metadata_collection', 9 );

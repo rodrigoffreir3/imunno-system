@@ -13,6 +13,7 @@ import (
 	"imunno-collector/events"
 	"imunno-collector/hub"
 	"imunno-collector/ml_client"
+	"imunno-collector/wp_verifier"
 
 	"github.com/gorilla/websocket"
 	"github.com/jackc/pgx/v5"
@@ -61,6 +62,8 @@ func main() {
 	}
 }
 
+// Substitua a sua função fileEventHandler por esta versão mais inteligente
+
 func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLClient, enableQuarantine bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -76,16 +79,22 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 
 		log.Printf("Evento de arquivo recebido de %s: %s", event.AgentID, event.FilePath)
 
-		isWhitelisted, err := db.IsHashWhitelisted(event.FileHashSHA256)
-		if err != nil {
-			log.Printf("Erro ao verificar whitelist para o hash %s: %v", event.FileHashSHA256, err)
-		}
-		event.IsWhitelisted = isWhitelisted
+		// --- A NOVA INTELIGÊNCIA DE FONTE ESTÁ AQUI ---
+		// Por enquanto, vamos fixar a versão para o teste. No futuro, isso seria dinâmico.
+		wpVersion := "6.5.5"
+		wpLocale := "pt_BR"
 
-		if isWhitelisted {
-			log.Printf("Arquivo %s (%s) está na whitelist. Ignorando análise.", event.FilePath, event.FileHashSHA256)
+		// A primeira pergunta agora é: "Este arquivo é oficial do WordPress Core?"
+		isOfficial := wp_verifier.IsOfficialFile(event.FilePath, event.FileHashSHA256, wpVersion, wpLocale)
+
+		event.IsWhitelisted = isOfficial // Usamos o mesmo campo para registrar que é um arquivo confiável
+		// --- FIM DA NOVA INTELIGÊNCIA ---
+
+		if event.IsWhitelisted {
+			log.Printf("Arquivo %s (%s) verificado como oficial do WordPress %s. Ignorando análise.", event.FilePath, event.FileHashSHA256, wpVersion)
 			event.ThreatScore = 0
 		} else {
+			// Se NÃO for oficial, o resto da análise (heurística + IA) continua como antes.
 			if event.Content != "" {
 				event.ThreatScore, event.AnalysisFindings = analyzer.AnalyzeContent([]byte(event.Content))
 				log.Printf("Análise heurística concluída para %s. Pontuação de ameaça inicial: %d", event.FilePath, event.ThreatScore)
@@ -124,7 +133,7 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 			h.SendCommandToAgent(event.AgentID, commandJSON)
 		}
 
-		_, err = db.InsertFileEvent(
+		_, err := db.InsertFileEvent(
 			event.AgentID,
 			event.Hostname,
 			event.FilePath,
