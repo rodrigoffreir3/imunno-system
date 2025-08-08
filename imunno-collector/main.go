@@ -13,10 +13,9 @@ import (
 	"imunno-collector/events"
 	"imunno-collector/hub"
 	"imunno-collector/ml_client"
-	"imunno-collector/wp_verifier"
 
 	"github.com/gorilla/websocket"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5" // --- CORREÇÃO APLICADA AQUI ---
 )
 
 // main continua igual
@@ -62,7 +61,6 @@ func main() {
 	}
 }
 
-// --- FUNÇÃO fileEventHandler ATUALIZADA E COMPLETA ---
 func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLClient, enableQuarantine bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -78,19 +76,16 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 
 		log.Printf("Evento de arquivo recebido de %s: %s", event.AgentID, event.FilePath)
 
-		// Por enquanto, vamos fixar a versão para o teste.
-		wpVersion := "6.5.5"
-		wpLocale := "pt_BR"
+		isWhitelisted, err := db.IsHashWhitelisted(event.FileHashSHA256)
+		if err != nil {
+			log.Printf("Erro ao verificar whitelist para o hash %s: %v", event.FileHashSHA256, err)
+		}
+		event.IsWhitelisted = isWhitelisted
 
-		// A primeira pergunta agora é: "Este arquivo é oficial do WordPress Core?"
-		isOfficial := wp_verifier.IsOfficialFile(event.FilePath, event.Content, wpVersion, wpLocale)
-		event.IsWhitelisted = isOfficial
-
-		if event.IsWhitelisted {
-			log.Printf("Arquivo %s verificado como oficial do WordPress %s. Ignorando análise.", event.FilePath, wpVersion)
+		if isWhitelisted {
+			log.Printf("Arquivo %s (%s) está na whitelist. Ignorando análise.", event.FilePath, event.FileHashSHA256)
 			event.ThreatScore = 0
 		} else {
-			// Se NÃO for oficial, a análise profunda (heurística + IA) acontece.
 			if event.Content != "" {
 				event.ThreatScore, event.AnalysisFindings = analyzer.AnalyzeContent([]byte(event.Content))
 				log.Printf("Análise heurística concluída para %s. Pontuação de ameaça inicial: %d", event.FilePath, event.ThreatScore)
@@ -129,7 +124,7 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 			h.SendCommandToAgent(event.AgentID, commandJSON)
 		}
 
-		_, err := db.InsertFileEvent(
+		_, err = db.InsertFileEvent(
 			event.AgentID,
 			event.Hostname,
 			event.FilePath,
@@ -154,10 +149,6 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 	}
 }
 
-// Substitua a sua função processEventHandler por esta versão final
-
-// Substitua a sua função processEventHandler por esta versão final
-
 func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -173,7 +164,6 @@ func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 
 		log.Printf("Evento de processo recebido de %s: PID=%d, PPID=%d, Comando=%s", event.AgentID, event.ProcessID, event.ParentID, event.Command)
 
-		// 1. Salva a prova no banco IMEDIATAMENTE.
 		err := db.InsertProcessEvent(
 			event.AgentID,
 			event.Hostname,
@@ -190,19 +180,15 @@ func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 			return
 		}
 
-		// 2. Transmite o evento inicial para o dashboard.
 		eventJSON, _ := json.Marshal(event)
 		h.Broadcast <- eventJSON
 
-		// Esta é a nova lógica para a sua goroutine de análise de causalidade
-
 		go func(eventToInvestigate events.ProcessEvent) {
-			time.Sleep(200 * time.Millisecond) // Pausa estratégica
+			time.Sleep(200 * time.Millisecond)
 
 			lineage, err := traceProcessLineage(db, &eventToInvestigate)
 			if err != nil {
 				log.Printf("ERRO durante a análise de causalidade para o PID %d: %v", eventToInvestigate.ProcessID, err)
-				return
 			}
 
 			if len(lineage) > 1 {
@@ -210,12 +196,9 @@ func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 				isCorrelated := false
 				for _, p := range lineage {
 					log.Printf("  -> PID: %d (Pai: %d) | Comando: %s", p.ProcessID, p.ParentID, p.Command)
-
-					// --- A INTELIGÊNCIA FINAL ESTÁ AQUI ---
 					parts := strings.Fields(p.Command)
 					if len(parts) > 1 {
 						filePath := parts[1]
-						// Procura por eventos de arquivo para este caminho nos últimos 10 minutos
 						fileOrigins, err := db.FindFileEventsInTimeWindow(p.Hostname, p.Timestamp, 10*time.Minute)
 						if err != nil {
 							log.Printf("ERRO ao buscar arquivos de origem para %s: %v", filePath, err)
@@ -224,26 +207,22 @@ func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 
 						for _, file := range fileOrigins {
 							if file.FilePath == filePath && file.ThreatScore > 0 {
-								// SUCESSO! A CONEXÃO FOI FEITA.
 								log.Printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 								log.Printf("!!! CAUSALIDADE DETECTADA !!!")
 								log.Printf("!!! Processo PID %d originado do arquivo: %s", p.ProcessID, file.FilePath)
 
 								originalProcessScore := eventToInvestigate.ThreatScore
 								newScore := originalProcessScore + file.ThreatScore
-								eventToInvestigate.ThreatScore = newScore // Atualiza o score do evento original
+								eventToInvestigate.ThreatScore = newScore
 
 								log.Printf("!!! Score do Arquivo: %d | Score Original do Processo: %d | Novo Score Combinado: %d", file.ThreatScore, originalProcessScore, newScore)
 								log.Printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
-								// Atualiza o evento no banco com o novo score
 								db.UpdateProcessEventScore(eventToInvestigate.ID, newScore)
-
-								// Retransmite o evento ATUALIZADO para o dashboard para a mágica acontecer
 								updatedEventJSON, _ := json.Marshal(eventToInvestigate)
 								h.Broadcast <- updatedEventJSON
 								isCorrelated = true
-								break // Para a busca assim que encontrar a primeira conexão.
+								break
 							}
 						}
 					}
