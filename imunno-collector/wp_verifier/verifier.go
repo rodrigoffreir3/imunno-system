@@ -1,59 +1,63 @@
-// Arquivo: imunno-collector/wp_verifier/verifier.go
+// Arquivo: imunno-collector/wp_verifier/verifier.go (Corrigido para usar MD5)
 package wp_verifier
 
 import (
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 )
 
-// WpChecksums armazena o cache dos checksums para uma versão específica.
 type WpChecksums struct {
 	Checksums  map[string]interface{}
 	LastUpdate time.Time
 }
 
 var (
-	// Usamos um sync.Map para guardar os caches de forma segura em um ambiente com múltiplas threads.
-	cache = &sync.Map{}
-	// Duração do cache para evitar muitas chamadas à API.
+	cache         = &sync.Map{}
 	cacheDuration = 12 * time.Hour
 )
 
-// IsOfficialFile é a função principal que usaremos. Ela verifica se um arquivo/hash é oficial.
-func IsOfficialFile(filePath, fileHash, wpVersion, locale string) bool {
-	// Primeiro, tentamos pegar a lista de checksums do nosso cache.
+// IsOfficialFile agora recebe o CONTEÚDO do arquivo para calcular o MD5 internamente.
+func IsOfficialFile(filePath, fileContent, wpVersion, locale string) bool {
 	checksums, found := getChecksumsFromCache(wpVersion, locale)
 	if !found {
-		// Se não estiver no cache, buscamos na API do WordPress.
 		var err error
 		checksums, err = fetchAndCacheChecksums(wpVersion, locale)
 		if err != nil {
-			log.Printf("[WP Verifier] ERRO ao buscar checksums para a versão %s: %v", wpVersion, err)
-			return false // Em caso de erro, consideramos o arquivo como não oficial por segurança.
+			log.Printf("[WP Verifier] ERRO ao buscar checksums: %v", err)
+			return false
 		}
 	}
 
-	// Agora que temos a lista, verificamos se o nosso arquivo está nela.
-	// Removemos os diretórios iniciais do WordPress para bater com o formato da API.
 	cleanPath := removeWpPathPrefix(filePath)
-
 	officialHash, exists := checksums[cleanPath]
 	if !exists {
 		return false // O arquivo não está na lista oficial.
 	}
 
-	// Comparamos o hash do nosso arquivo com o hash oficial.
-	return officialHash == fileHash
+	// Calcula o hash MD5 do conteúdo que recebemos.
+	currentMd5Hash := calculateMd5(fileContent)
+
+	// Compara o nosso MD5 com o MD5 oficial.
+	return officialHash == currentMd5Hash
 }
 
-// fetchAndCacheChecksums busca os checksums na API e os guarda no cache.
+// calculateMd5 é uma nova função para gerar o hash MD5.
+func calculateMd5(content string) string {
+	hash := md5.New()
+	io.WriteString(hash, content)
+	return fmt.Sprintf("%x", hash.Sum(nil))
+}
+
 func fetchAndCacheChecksums(version, locale string) (map[string]interface{}, error) {
-	log.Printf("[WP Verifier] Cache para a versão %s não encontrado. Buscando na API do WordPress.org...", version)
+	log.Printf("[WP Verifier] Cache para a versão %s não encontrado. Buscando na API...", version)
 	url := fmt.Sprintf("https://api.wordpress.org/core/checksums/1.0/?version=%s&locale=%s", version, locale)
 
 	resp, err := http.Get(url)
@@ -70,38 +74,38 @@ func fetchAndCacheChecksums(version, locale string) (map[string]interface{}, err
 		return nil, err
 	}
 
-	// Guarda os novos checksums no cache com a data de atualização.
 	cache.Store(version+"_"+locale, WpChecksums{
 		Checksums:  data.Checksums,
 		LastUpdate: time.Now(),
 	})
-
-	log.Printf("[WP Verifier] Checksums para a versão %s carregados e guardados em cache.", version)
+	log.Printf("[WP Verifier] Checksums para a versão %s carregados e em cache.", version)
 	return data.Checksums, nil
 }
 
-// getChecksumsFromCache tenta recuperar os checksums do cache.
 func getChecksumsFromCache(version, locale string) (map[string]interface{}, bool) {
 	cached, found := cache.Load(version + "_" + locale)
 	if !found {
 		return nil, false
 	}
-
 	wpChecksums := cached.(WpChecksums)
-	// Se o cache tiver mais de 12 horas, consideramos ele expirado.
 	if time.Since(wpChecksums.LastUpdate) > cacheDuration {
 		return nil, false
 	}
-
 	return wpChecksums.Checksums, true
 }
 
-// removeWpPathPrefix limpa o caminho do arquivo para bater com o da API.
 func removeWpPathPrefix(filePath string) string {
-	// A API não inclui "wp-admin/", "wp-content/", "wp-includes/" no início de alguns caminhos.
-	// Esta função é uma simplificação e pode precisar de ajustes finos.
-	path := strings.Replace(filePath, "wp-admin/", "", 1)
-	path = strings.Replace(path, "wp-content/", "", 1)
-	path = strings.Replace(path, "wp-includes/", "", 1)
-	return path
+	// Limpa o caminho para bater com o formato da API.
+	// Ex: /app/wordpress/wp-admin/about.php -> wp-admin/about.php
+	if index := strings.Index(filePath, "wp-admin"); index != -1 {
+		return filePath[index:]
+	}
+	if index := strings.Index(filePath, "wp-content"); index != -1 {
+		return filePath[index:]
+	}
+	if index := strings.Index(filePath, "wp-includes"); index != -1 {
+		return filePath[index:]
+	}
+	// Para arquivos na raiz
+	return filepath.Base(filePath)
 }
