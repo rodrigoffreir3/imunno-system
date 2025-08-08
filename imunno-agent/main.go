@@ -40,24 +40,35 @@ func main() {
 	}
 }
 
-// O resto do seu código permanece exatamente o mesmo
+// Substitua a sua função patrulharDiretorio por esta versão mais inteligente
+
 func patrulharDiretorio(dirPath string) {
+	// Cria um mapa para marcar os arquivos que encontramos nesta varredura.
+	arquivosAtuais := make(map[string]bool)
+
 	filepath.WalkDir(dirPath, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
+
 		if !d.IsDir() && (filepath.Ext(path) == ".php" || filepath.Ext(path) == ".js") {
+			// Marca o arquivo como "presente" nesta varredura.
+			arquivosAtuais[path] = true
+
 			hashAtual, err := calcularHash(path)
 			if err != nil {
 				log.Printf("!!! Não foi possível calcular o hash de %s: %v", path, err)
 				return nil
 			}
+
 			hashConhecido, existe := arquivosVigiados[path]
+
+			// Se o arquivo não existia na nossa memória, é um evento de CRIAÇÃO.
 			if !existe {
 				log.Printf("+++ ARQUIVO NOVO DETECTADO (via polling): %s", path)
 				arquivosVigiados[path] = hashAtual
 				processAndSendFileEvent(path, "CREATE")
-			} else if hashConhecido != hashAtual {
+			} else if hashConhecido != hashAtual { // Se existia mas o hash mudou, é MODIFICAÇÃO.
 				log.Printf("### ARQUIVO MODIFICADO DETECTADO (via polling): %s", path)
 				arquivosVigiados[path] = hashAtual
 				processAndSendFileEvent(path, "MODIFY")
@@ -65,6 +76,15 @@ func patrulharDiretorio(dirPath string) {
 		}
 		return nil
 	})
+
+	// Agora, a parte inteligente: verificamos se algum arquivo da nossa memória "sumiu".
+	for path := range arquivosVigiados {
+		if !arquivosAtuais[path] {
+			log.Printf("--- ARQUIVO REMOVIDO DETECTADO: %s", path)
+			// O arquivo foi removido (ou quarentenado), então o removemos da nossa memória.
+			delete(arquivosVigiados, path)
+		}
+	}
 }
 
 func calcularHash(filePath string) (string, error) {
