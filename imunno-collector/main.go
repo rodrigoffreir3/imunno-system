@@ -13,7 +13,6 @@ import (
 	"imunno-collector/events"
 	"imunno-collector/hub"
 	"imunno-collector/ml_client"
-	"imunno-collector/wp_verifier"
 
 	"github.com/gorilla/websocket"
 	"github.com/jackc/pgx/v5"
@@ -62,7 +61,7 @@ func main() {
 	}
 }
 
-// Substitua a sua função fileEventHandler por esta versão mais inteligente
+// Substitua a sua função fileEventHandler por esta versão final
 
 func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLClient, enableQuarantine bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -79,22 +78,20 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 
 		log.Printf("Evento de arquivo recebido de %s: %s", event.AgentID, event.FilePath)
 
-		// --- A NOVA INTELIGÊNCIA DE FONTE ESTÁ AQUI ---
-		// Por enquanto, vamos fixar a versão para o teste. No futuro, isso seria dinâmico.
-		wpVersion := "6.5.5"
-		wpLocale := "pt_BR"
+		// --- A LÓGICA DE PRIORIDADE FOI AJUSTADA AQUI ---
+		// 1. PRIMEIRO, verificamos a whitelist.
+		isWhitelisted, err := db.IsHashWhitelisted(event.FileHashSHA256)
+		if err != nil {
+			log.Printf("Erro ao verificar whitelist para o hash %s: %v", event.FileHashSHA256, err)
+		}
+		event.IsWhitelisted = isWhitelisted
 
-		// A primeira pergunta agora é: "Este arquivo é oficial do WordPress Core?"
-		isOfficial := wp_verifier.IsOfficialFile(event.FilePath, event.FileHashSHA256, wpVersion, wpLocale)
-
-		event.IsWhitelisted = isOfficial // Usamos o mesmo campo para registrar que é um arquivo confiável
-		// --- FIM DA NOVA INTELIGÊNCIA ---
-
+		// 2. Se estiver na whitelist, a análise PARA AQUI.
 		if event.IsWhitelisted {
-			log.Printf("Arquivo %s (%s) verificado como oficial do WordPress %s. Ignorando análise.", event.FilePath, event.FileHashSHA256, wpVersion)
+			log.Printf("Arquivo %s (%s) está na whitelist. Ignorando análise.", event.FilePath, event.FileHashSHA256)
 			event.ThreatScore = 0
 		} else {
-			// Se NÃO for oficial, o resto da análise (heurística + IA) continua como antes.
+			// 3. Se NÃO estiver na whitelist, a análise profunda (heurística + IA) acontece.
 			if event.Content != "" {
 				event.ThreatScore, event.AnalysisFindings = analyzer.AnalyzeContent([]byte(event.Content))
 				log.Printf("Análise heurística concluída para %s. Pontuação de ameaça inicial: %d", event.FilePath, event.ThreatScore)
@@ -133,17 +130,11 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 			h.SendCommandToAgent(event.AgentID, commandJSON)
 		}
 
-		_, err := db.InsertFileEvent(
-			event.AgentID,
-			event.Hostname,
-			event.FilePath,
-			event.FileHashSHA256,
-			event.Content,
-			event.ThreatScore,
-			event.AnalysisFindings,
-			event.IsWhitelisted,
-			event.QuarantinedPath,
-			event.Timestamp,
+		// O evento (com score 0 se for da whitelist) é salvo no banco
+		_, err = db.InsertFileEvent(
+			event.AgentID, event.Hostname, event.FilePath, event.FileHashSHA256,
+			event.Content, event.ThreatScore, event.AnalysisFindings,
+			event.IsWhitelisted, event.QuarantinedPath, event.Timestamp,
 		)
 		if err != nil {
 			log.Printf("Erro ao inserir evento de arquivo no banco de dados: %v", err)
