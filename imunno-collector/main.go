@@ -87,7 +87,7 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 			event.ThreatScore = 0
 		} else {
 			if event.Content != "" {
-				event.ThreatScore, event.AnalysisFindings = analyzer.AnalyzeContent([]byte(event.Content))
+				event.ThreatScore, event.AnalysisFindings = analyzer.AnalyzeContent([]byte(event.Content), event.FilePath)
 				log.Printf("Análise heurística concluída para %s. Pontuação de ameaça inicial: %d", event.FilePath, event.ThreatScore)
 
 				fileSize := len(event.Content)

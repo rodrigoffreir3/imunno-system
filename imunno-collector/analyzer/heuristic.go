@@ -1,10 +1,10 @@
-// Arquivo: imunno-collector/analyzer/heuristic.go
-
 package analyzer
 
 import (
 	"encoding/json"
+	"log"
 	"regexp"
+	"strings"
 )
 
 // RegraHeuristica define uma regra com padrão, descrição e pontuação.
@@ -21,15 +21,11 @@ var regrasDeArquivo = []RegraHeuristica{
 		Padrao:    regexp.MustCompile(`eval\s*\(`),
 		Pontuacao: 50,
 	},
-	// --- NOVA REGRA CORRIGIDA AQUI ---
 	{
 		Descricao: "Execução de função a partir de variável de input (Variable Function)",
-		// Este regex mais simples e correto procura pelo padrão de uma variável
-		// sendo usada como função, que é altamente suspeito.
 		Padrao:    regexp.MustCompile(`\$\w+\s*\(`),
 		Pontuacao: 45,
 	},
-	// --- FIM DA CORREÇÃO ---
 	{
 		Descricao: "Funções de execução de comando detectadas",
 		Padrao:    regexp.MustCompile(`(shell_exec|passthru|system|exec|popen|proc_open)\s*\(`),
@@ -59,7 +55,6 @@ var regrasDeArquivo = []RegraHeuristica{
 
 // >>>>>>>>>>>>>>>> REGRAS DE PROCESSO <<<<<<<<<<<<<<<<
 var regrasDeProcesso = []RegraHeuristica{
-	// Suas regras de processo permanecem intactas
 	{
 		Descricao: "Download de arquivos (curl/wget)",
 		Padrao:    regexp.MustCompile(`(curl|wget)\s`),
@@ -87,11 +82,24 @@ var regrasDeProcesso = []RegraHeuristica{
 	},
 }
 
-// AnalyzeContent é a função esperada pelo main.go — ela analisa e retorna o score e os achados em JSON.
-func AnalyzeContent(content []byte) (int, []byte) {
+// AnalyzeContent é a função esperada pelo main.go — agora ela recebe o caminho do arquivo para ter contexto.
+func AnalyzeContent(content []byte, filePath string) (int, []byte) {
+	// 1. INTELIGÊNCIA DE CONTEXTO: Verificamos se é um arquivo conhecido que PODE ter código suspeito.
+	if strings.HasSuffix(filePath, "wp-config.php") || strings.HasSuffix(filePath, "wp-activate.php") {
+		log.Printf("[CONTEXTO] Arquivo %s identificado como um arquivo de núcleo do WP com funções sensíveis. Ignorando análise heurística.", filePath)
+
+		analysisResult := struct {
+			RegrasAcionadas []string `json:"regras_acionadas"`
+		}{
+			RegrasAcionadas: []string{"Arquivo de configuração/ativação do WordPress"},
+		}
+		jsonFindings, _ := json.Marshal(analysisResult)
+		return 0, jsonFindings // Retornamos score 0, resolvendo o falso positivo.
+	}
+
+	// 2. Se não for uma exceção, a análise padrão continua.
 	scoreTotal := 0
 	var findings []string
-
 	conteudoStr := string(content)
 
 	for _, regra := range regrasDeArquivo {
@@ -111,7 +119,7 @@ func AnalyzeContent(content []byte) (int, []byte) {
 	return scoreTotal, jsonFindings
 }
 
-// AnalisarProcesso permanece como está no seu código original
+// AnalisarProcesso permanece como está no seu código original.
 func AnalisarProcesso(comando string) (int, []string) {
 	scoreTotal := 0
 	var findings []string
