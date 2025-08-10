@@ -64,7 +64,8 @@ services:
       AGENT_WATCH_DIR: "/app/wordpress" 
       AGENT_QUARANTINE_DIR: "/app/quarantine"
     volumes:
-      - ./wordpress:/var/www/html # O volume agora aponta para o lugar certo
+      # O volume foi mantido para que o agent vigie a pasta correta.
+      - ./wordpress:/app/wordpress 
       - ./imunno-agent/quarantine:/app/quarantine
       - ./audit/audit.log:/var/log/audit/audit.log
     cap_add:
@@ -73,16 +74,18 @@ services:
     networks:
       - imunno-net
 
-  # --- SERVIÇO WORDPRESS SIMPLIFICADO ---
+  # --- SERVIÇO WORDPRESS CORRIGIDO ---
+  # Esta seção foi a única alterada para resolver o erro "Internal Server Error".
   wordpress_site:
-    image: php:apache # Usando uma imagem mais simples e direta
+    build:
+      # Agora ele usa o nosso Dockerfile customizado da nova pasta 'imunno-web-server'.
+      context: ./imunno-web-server
     container_name: wordpress_site
     restart: always
     ports:
       - "8081:80"
     volumes:
       - ./wordpress:/var/www/html
-    # As dependências de banco de dados foram removidas, pois não são mais necessárias
     networks:
       - imunno-net
   # --- FIM DA ALTERAÇÃO ---
