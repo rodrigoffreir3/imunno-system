@@ -64,7 +64,7 @@ services:
       AGENT_WATCH_DIR: "/app/wordpress" 
       AGENT_QUARANTINE_DIR: "/app/quarantine"
     volumes:
-      - ./wordpress:/app/wordpress
+      - ./wordpress:/var/www/html # O volume agora aponta para o lugar certo
       - ./imunno-agent/quarantine:/app/quarantine
       - ./audit/audit.log:/var/log/audit/audit.log
     cap_add:
@@ -72,6 +72,20 @@ services:
       - AUDIT_CONTROL
     networks:
       - imunno-net
+
+  # --- SERVIÇO WORDPRESS SIMPLIFICADO ---
+  wordpress_site:
+    image: php:apache # Usando uma imagem mais simples e direta
+    container_name: wordpress_site
+    restart: always
+    ports:
+      - "8081:80"
+    volumes:
+      - ./wordpress:/var/www/html
+    # As dependências de banco de dados foram removidas, pois não são mais necessárias
+    networks:
+      - imunno-net
+  # --- FIM DA ALTERAÇÃO ---
 
   imunno_simulador:
     build:
@@ -109,26 +123,6 @@ services:
       - imunno_collector
     environment:
         COLLECTOR_URL: "http://imunno_collector:8080"
-    networks:
-      - imunno-net
-
-  # --- O SERVIÇO QUE FALTAVA FOI ADICIONADO AQUI ---
-  wordpress_site:
-    image: wordpress:latest
-    container_name: wordpress_site
-    restart: always
-    ports:
-      - "8081:80"
-    volumes:
-      - ./wordpress:/var/www/html
-    environment:
-      WORDPRESS_DB_HOST: imunno_postgres # Aponta para o seu serviço postgres
-      WORDPRESS_DB_USER: imunno_user
-      WORDPRESS_DB_PASSWORD: imunno_pass
-      WORDPRESS_DB_NAME: imunno_db
-    depends_on:
-      postgres:
-        condition: service_healthy
     networks:
       - imunno-net
 
