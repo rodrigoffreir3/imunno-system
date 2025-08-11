@@ -1,64 +1,74 @@
+/* Arquivo: imunno-collector/static/style.css (Estilo FUI) */
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto+Mono:wght@300;400&display=swap');
+
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    background-color: #1e1e1e;
-    color: #d4d4d4;
-    margin: 0;
-    padding: 20px;
+    background-color: #010409;
+    color: #c9d1d9;
+    font-family: 'Roboto Mono', monospace;
+    text-shadow: 0 0 2px rgba(0, 192, 255, 0.3);
 }
 
-header {
-    display: flex;
-    align-items: center;
-    border-bottom: 2px solid #444;
-    padding-bottom: 10px;
-    margin-bottom: 20px;
-}
+.text-cyan-400 { color: #38bdf8; }
+.text-red-500 { color: #ef4444; }
+.text-yellow-400 { color: #facc15; }
+.text-cyan-300 { color: #67e8f9; }
+.text-gray-400 { color: #9ca3af; }
 
-header h1 {
-    margin: 0;
-    flex-grow: 1;
-}
+.bg-gray-900 { background-color: #0d1117; }
+.bg-gray-800 { background-color: rgba(22, 27, 34, 0.8); border: 1px solid rgba(48, 54, 61, 0.8); }
 
-.status-light {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background-color: #ff4d4d; /* Começa vermelho (desconectado) */
-    box-shadow: 0 0 10px #ff4d4d;
-    transition: background-color 0.5s ease;
-}
+h1 { font-family: 'Orbitron', sans-serif; text-shadow: 0 0 8px rgba(56, 189, 248, 0.7); }
 
-table {
+/* Estilo para ameaças nas tabelas */
+.threat-high { background-color: rgba(153, 27, 27, 0.4) !important; color: #fca5a5 !important; }
+.threat-medium { background-color: rgba(180, 83, 9, 0.3) !important; color: #fcd34d !important; }
+.threat-low { background-color: rgba(161, 98, 7, 0.2) !important; }
+
+/* Animação de "scanline" */
+body::after {
+    content: ' ';
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
     width: 100%;
-    border-collapse: collapse;
-    font-size: 0.9em;
+    height: 4px;
+    background: linear-gradient(to right, rgba(56, 189, 248, 0), rgba(56, 189, 248, 0.5), rgba(56, 189, 248, 0));
+    animation: scan 4s linear infinite;
+    opacity: 0.7;
+    z-index: 100;
 }
 
-th, td {
-    border: 1px solid #444;
-    padding: 12px;
-    text-align: left;
-    vertical-align: top;
+@keyframes scan {
+    0% { transform: translateY(-10px); }
+    100% { transform: translateY(100vh); }
 }
 
-thead {
-    background-color: #2a2d2e;
+/* Efeito de "flicker" sutil no texto */
+@keyframes text-flicker {
+  0% { opacity: 1; }
+  50% { opacity: 0.95; }
+  100% { opacity: 1; }
+}
+body { animation: text-flicker 10s linear infinite; }
+
+/* Botão de Ação */
+.action-button {
+    background-color: rgba(34, 107, 140, 0.5);
+    border: 1px solid #38bdf8;
+    color: #a5f3fc;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.action-button:hover {
+    background-color: #38bdf8;
+    color: #0d1117;
+    box-shadow: 0 0 10px #38bdf8;
 }
 
-tbody tr:nth-child(even) {
-    background-color: #2a2d2e;
-}
-
-/* Estilos para os níveis de ameaça */
-.threat-high {
-    background-color: rgba(255, 77, 77, 0.2) !important;
-    font-weight: bold;
-}
-
-.threat-medium {
-    background-color: rgba(255, 165, 0, 0.2) !important;
-}
-
-.threat-low {
-    /* Sem estilo extra, fundo padrão */
-}
+/* Accordion */
+.accordion-header { transition: background-color 0.3s ease; }
+.accordion-header:hover { background-color: rgba(30, 41, 59, 0.8); }
+.accordion-content { overflow: hidden; }

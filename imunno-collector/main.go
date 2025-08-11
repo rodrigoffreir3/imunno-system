@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -48,6 +49,7 @@ func main() {
 
 	http.HandleFunc("/v1/events/file", fileEventHandler(db, h, mlClient, cfg.EnableQuarantine))
 	http.HandleFunc("/v1/events/process", processEventHandler(db, h))
+	http.HandleFunc("/v1/whitelist/add", whitelistAddHandler(db))
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(h, w, r)
 	})
@@ -294,4 +296,31 @@ func traceProcessLineage(db *database.Database, initialEvent *events.ProcessEven
 	}
 
 	return lineage, nil
+}
+
+func whitelistAddHandler(db *database.Database) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
+			return
+		}
+		var payload struct {
+			Hash     string `json:"file_hash"`
+			FilePath string `json:"file_path"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "Payload inválido", http.StatusBadRequest)
+			return
+		}
+
+		fileName := filepath.Base(payload.FilePath)
+		err := db.AddHashToWhitelist(payload.Hash, fileName, "Autorizado Manualmente")
+		if err != nil {
+			http.Error(w, "Falha ao adicionar na whitelist", http.StatusInternalServerError)
+			return
+		}
+
+		log.Printf("[WHITELIST] Hash %s para o arquivo %s adicionado manualmente.", payload.Hash, fileName)
+		w.WriteHeader(http.StatusOK)
+	}
 }

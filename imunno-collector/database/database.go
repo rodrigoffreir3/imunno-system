@@ -183,8 +183,6 @@ func (db *Database) FindFileEventByPath(filePath string, hostname string) (*even
 	return &event, nil
 }
 
-// Adicione esta nova função no final do arquivo database.go
-
 // UpdateProcessEventScore atualiza a pontuação de ameaça de um evento de processo existente.
 func (db *Database) UpdateProcessEventScore(eventID int, newScore int) error {
 	query := `UPDATE process_events SET threat_score = $1 WHERE id = $2`
@@ -192,5 +190,13 @@ func (db *Database) UpdateProcessEventScore(eventID int, newScore int) error {
 	if err != nil {
 		log.Printf("ERRO ao atualizar o score do evento de processo ID %d: %v", eventID, err)
 	}
+	return err
+}
+
+// AddHashToWhitelist adiciona um novo hash de arquivo à tabela de whitelist.
+func (db *Database) AddHashToWhitelist(hash, fileName, source string) error {
+	query := `INSERT INTO known_good_hashes (file_hash_sha256, file_name, software_source)
+	          VALUES ($1, $2, $3) ON CONFLICT (file_hash_sha256) DO NOTHING`
+	_, err := db.Pool.Exec(context.Background(), query, hash, fileName, source)
 	return err
 }

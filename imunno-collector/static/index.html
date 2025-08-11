@@ -17,58 +17,58 @@
             </div>
         </header>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div class="bg-gray-800 p-4 rounded-lg text-center">
                 <h2 class="text-sm font-bold text-gray-400">EVENTOS TOTAIS (SESSÃO)</h2>
                 <p id="events-today" class="text-3xl font-bold text-cyan-400">0</p>
             </div>
             <div class="bg-gray-800 p-4 rounded-lg text-center">
-                <h2 class="text-sm font-bold text-gray-400">AMEAÇAS DETECTADAS (SESSÃO)</h2>
+                <h2 class="text-sm font-bold text-gray-400">AMEAÇAS NEUTRALIZADAS (SESSÃO)</h2>
                 <p id="threats-neutralized" class="text-3xl font-bold text-red-500">0</p>
             </div>
-            <div class="bg-gray-800 p-4 rounded-lg text-center">
-                <h2 class="text-sm font-bold text-gray-400">ÚLTIMA AMEAÇA DETECTADA</h2>
-                <p id="last-threat" class="text-sm font-mono text-yellow-400 truncate">Nenhuma</p>
-            </div>
         </div>
-
-        <div class="bg-gray-800 p-4 rounded-lg mb-6">
-            <h3 class="font-bold text-lg mb-2 text-cyan-300">Eventos de Arquivo</h3>
+        
+        <div class="bg-gray-800 p-4 rounded-lg mb-6 border-2 border-red-500/50">
+            <h3 class="font-bold text-lg mb-2 text-red-400">Ameaças Críticas Detectadas</h3>
             <div class="overflow-x-auto">
                 <table class="min-w-full text-sm">
                     <thead>
                         <tr class="text-left text-gray-400">
                             <th class="p-2">Timestamp</th>
-                            <th class="p-2">Hostname</th>
-                            <th class="p-2">Caminho do Arquivo</th>
+                            <th class="p-2">Tipo</th>
+                            <th class="p-2">Detalhe da Ameaça</th>
                             <th class="p-2">Score</th>
-                            <th class="p-2">Detalhes</th>
+                            <th class="p-2">Ações</th>
                         </tr>
                     </thead>
-                    <tbody id="file-events-body">
+                    <tbody id="threats-table-body">
                         </tbody>
                 </table>
             </div>
         </div>
 
-        <div class="bg-gray-800 p-4 rounded-lg">
-            <h3 class="font-bold text-lg mb-2 text-cyan-300">Eventos de Processo</h3>
-            <div class="overflow-x-auto">
-                <table class="min-w-full text-sm">
-                    <thead>
-                        <tr class="text-left text-gray-400">
-                            <th class="p-2">Timestamp</th>
-                            <th class="p-2">Hostname</th>
-                            <th class="p-2">PID</th>
-                            <th class="p-2">Comando</th>
-                            <th class="p-2">Usuário</th>
-                            <th class="p-2">Score</th>
-                            <th class="p-2">Origem (Causalidade)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="process-events-body">
-                        </tbody>
-                </table>
+        <div class="space-y-4">
+            <div>
+                <button class="accordion-header bg-gray-800 p-4 rounded-lg w-full text-left font-bold text-lg text-cyan-300 flex justify-between items-center">
+                    <span>Log Completo de Eventos de Arquivo</span>
+                    <span>&#9660;</span>
+                </button>
+                <div class="accordion-content bg-gray-800 p-4 rounded-b-lg" style="display: none;">
+                    <table class="min-w-full text-sm">
+                        <tbody id="file-events-body"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div>
+                <button class="accordion-header bg-gray-800 p-4 rounded-lg w-full text-left font-bold text-lg text-cyan-300 flex justify-between items-center">
+                    <span>Log Completo de Eventos de Processo</span>
+                    <span>&#9660;</span>
+                </button>
+                <div class="accordion-content bg-gray-800 p-4 rounded-b-lg" style="display: none;">
+                    <table class="min-w-full text-sm">
+                        <tbody id="process-events-body"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
