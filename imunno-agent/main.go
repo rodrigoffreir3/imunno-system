@@ -146,39 +146,64 @@ func handleCommand(cmd CommandMessage) {
 	}
 }
 
+// Substitua a sua função handleQuarantineCommand por esta versão final e aprimorada
+
 func handleQuarantineCommand(filePath string) {
 	if err := os.MkdirAll(cfg.Agent.QuarantineDir, 0755); err != nil {
-		log.Printf("!!! ERRO QUARENTENA: Não foi possível criar o diretório: %v", err)
+		log.Printf("!!! ERRO QUARENTENA: Não foi possível criar o diretório de quarentena: %v", err)
 		return
 	}
+
+	// 1. Abre o arquivo de origem para leitura (do seu código funcional)
 	sourceFile, err := os.Open(filePath)
 	if err != nil {
 		log.Printf("!!! ERRO QUARENTENA: Não foi possível abrir o arquivo de origem %s: %v", filePath, err)
 		return
 	}
 	defer sourceFile.Close()
+
 	fileName := filepath.Base(filePath)
-	destPath := filepath.Join(cfg.Agent.QuarantineDir, fileName)
+
+	// --- ALTERAÇÃO 1: RENOMEANDO O ARQUIVO COM TIMESTAMP ---
+	// Pega o timestamp atual e o adiciona ao início do nome do arquivo.
+	timestamp := time.Now().Unix()
+	destFileName := fmt.Sprintf("%d_%s", timestamp, fileName)
+	destPath := filepath.Join(cfg.Agent.QuarantineDir, destFileName)
+	// --- FIM DA ALTERAÇÃO 1 ---
+
+	// 2. Cria o arquivo de destino na pasta de quarentena
 	destFile, err := os.Create(destPath)
 	if err != nil {
 		log.Printf("!!! ERRO QUARENTENA: Não foi possível criar o arquivo de destino %s: %v", destPath, err)
 		return
 	}
 	defer destFile.Close()
+
+	// 3. Copia o conteúdo (do seu código funcional)
 	_, err = io.Copy(destFile, sourceFile)
 	if err != nil {
 		os.Remove(destPath)
 		log.Printf("!!! ERRO QUARENTENA: Falha ao copiar o conteúdo para o arquivo de quarentena: %v", err)
 		return
 	}
+
 	sourceFile.Close()
 	destFile.Close()
+
+	// 4. Apaga o arquivo original (do seu código funcional)
 	err = os.Remove(filePath)
 	if err != nil {
 		log.Printf("!!! ERRO QUARENTENA: Falha ao apagar o arquivo original %s após a cópia bem-sucedida: %v", filePath, err)
 		return
 	}
+
 	log.Printf("+++ Arquivo %s movido com sucesso para a quarentena em %s", filePath, destPath)
+
+	// --- ALTERAÇÃO 2: ATUALIZANDO A MEMÓRIA DO AGENTE ---
+	// Após mover o arquivo, removemos ele da nossa memória interna.
+	delete(arquivosVigiados, filePath)
+	log.Printf("[MEMÓRIA] Registro do arquivo %s removido da memória do agente.", filePath)
+	// --- FIM DA ALTERAÇÃO 2 ---
 }
 
 func processAndSendFileEvent(filePath string, eventType string) {
