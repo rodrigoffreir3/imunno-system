@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- SEQUÊNCIA DE BOOT ---
     const bootSequence = [
         { text: "INICIALIZANDO NÚCLEO...", delay: 800 },
-        { text: "CARREGANDO ANALisador...", delay: 1200 },
+        { text: "CARREGANDO ANALISADOR...", delay: 1200 },
         { text: "CONECTANDO À IA...", delay: 800 },
         { text: "ESTABELECENDO WEBSOCKET...", delay: 1500 },
         { text: "SISTEMA ONLINE", delay: 500 }
@@ -42,11 +42,6 @@ document.addEventListener('DOMContentLoaded', () => {
     startBootSequence();
 
     // --- LÓGICA DO DASHBOARD ---
-    const getThreatLevelClass = (score) => {
-        if (score >= 70) return 'threat-high';
-        return '';
-    };
-
     window.authorizeHash = async (hash, filePath) => {
         if (!confirm(`Tem certeza que deseja adicionar o arquivo ${filePath} à whitelist?`)) return;
         try {
