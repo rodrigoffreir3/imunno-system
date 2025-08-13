@@ -4,74 +4,85 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Imunno System - Centro de Comando</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="style.css">
 </head>
-<body class="bg-gray-900 text-gray-200 font-sans">
-    <div class="container mx-auto p-4">
-        <header class="panel flex justify-between items-center mb-4">
-            <h1 class="text-3xl font-bold text-cyan-400">IMUNNO SYSTEM</h1>
-            <div class="flex items-center space-x-3 bg-gray-800/50 px-4 py-2 rounded-lg border border-cyan-500/20">
-                <span id="status-text" class="font-semibold uppercase">Conectando...</span>
-                <div id="status-light" class="w-4 h-4 rounded-full bg-yellow-500 shadow-[0_0_10px_#fef08a] animate-pulse"></div>
+<body>
+    <div id="loading-screen">
+        <div class="logo-boot">IMUNNO</div>
+        <div class="boot-text" id="boot-text">INITIALIZING CORE...</div>
+        <div class="scan-bar"></div>
+    </div>
+
+    <div id="dashboard-content" class="container" style="display: none;">
+        <header>
+            <h1 class="system-title">IMUNNO SYSTEM :: CENTRO DE COMANDO</h1>
+            <div class="status-box">
+                <div id="status-light" class="status-light-yellow"></div>
+                <span id="status-text">CONECTANDO...</span>
             </div>
         </header>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div class="panel text-center">
-                <h2 class="metric-title">Eventos Totais (Sessão)</h2>
-                <p id="events-today" class="metric-value text-cyan-400">0</p>
+        <main class="main-grid">
+            <div class="panel panel-left">
+                <div class="eye-container">
+                    <div class="eye-ring eye-ring-1"></div>
+                    <div class="eye-ring eye-ring-2"></div>
+                    <div class="eye-iris"></div>
+                </div>
+                <div class="server-info">
+                    <div class="info-label">SISTEMA MONITORADO</div>
+                    <div class="info-value" id="server-name">Servidor Local de Testes</div>
+                </div>
+                <div class="metrics-grid">
+                    <div>
+                        <div class="info-label">EVENTOS TOTAIS (SESSÃO)</div>
+                        <div class="info-value text-cyan" id="events-total">0</div>
+                    </div>
+                    <div>
+                        <div class="info-label">AMEAÇAS NEUTRALIZADAS</div>
+                        <div class="info-value text-red" id="threats-neutralized">0</div>
+                    </div>
+                </div>
             </div>
-            <div class="panel text-center">
-                <h2 class="metric-title">Ameaças Neutralizadas (Sessão)</h2>
-                <p id="threats-neutralized" class="metric-value text-red-500">0</p>
-            </div>
-        </div>
-        
-        <div class="panel mb-4">
-            <h3 class="panel-header text-red-400">Alerta de Ameaças Críticas</h3>
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead>
-                        <tr class="border-b border-cyan-500/20">
-                            <th class="p-2 text-left">Timestamp</th>
-                            <th class="p-2 text-left">Tipo</th>
-                            <th class="p-2 text-left">Detalhe da Ameaça</th>
-                            <th class="p-2 text-left">Score</th>
-                            <th class="p-2 text-left">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody id="threats-table-body">
-                        </tbody>
-                </table>
-            </div>
-        </div>
 
-        <div class="space-y-4">
-            <div>
-                <button class="accordion-header">
-                    <span>Log de Eventos de Arquivo</span>
-                    <span class="arrow">&#9660;</span>
-                </button>
-                <div class="accordion-content">
-                    <table class="w-full text-sm">
-                        <tbody id="file-events-body"></tbody>
-                    </table>
+            <div class="panel panel-right">
+                <div class="accordion">
+                    <button class="accordion-header threat-header">
+                        <span>AMEAÇAS CRÍTICAS EM QUARENTENA</span>
+                        <span class="arrow">&#9660;</span>
+                    </button>
+                    <div class="accordion-content">
+                        <table class="log-table">
+                            <thead id="threats-table-header" style="display: none;">
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Tipo</th>
+                                    <th>Detalhe</th>
+                                    <th>Score</th>
+                                    <th>Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody id="threats-table-body">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="accordion">
+                    <button class="accordion-header">
+                        <span>LOG DE ANÁLISE COMPLETO</span>
+                        <span class="arrow">&#9660;</span>
+                    </button>
+                    <div class="accordion-content">
+                        <table class="log-table">
+                            <tbody id="log-table-body">
+                                </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
-            <div>
-                <button class="accordion-header">
-                    <span>Log de Eventos de Processo</span>
-                    <span class="arrow">&#9660;</span>
-                </button>
-                <div class="accordion-content">
-                    <table class="w-full text-sm">
-                        <tbody id="process-events-body"></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
+        </main>
     </div>
+
     <script src="script.js"></script>
 </body>
 </html>
