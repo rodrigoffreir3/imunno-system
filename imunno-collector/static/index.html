@@ -3,86 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Imunno System - Centro de Comando</title>
+    <title>Imunno System - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="style.css">
 </head>
-<body>
-    <div id="loading-screen">
-        <div class="logo-boot">IMUNNO</div>
-        <div class="boot-text" id="boot-text">INITIALIZING CORE...</div>
-        <div class="scan-bar"></div>
-    </div>
-
-    <div id="dashboard-content" class="container" style="display: none;">
-        <header>
-            <h1 class="system-title">IMUNNO SYSTEM :: CENTRO DE COMANDO</h1>
-            <div class="status-box">
-                <div id="status-light" class="status-light-yellow"></div>
-                <span id="status-text">CONECTANDO...</span>
+<body class="bg-gray-900 text-gray-200 font-sans">
+    <div class="container mx-auto p-4">
+        <header class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold text-cyan-400">IMUNNO SYSTEM</h1>
+            <div class="flex items-center space-x-3 bg-gray-800 px-4 py-2 rounded-lg">
+                <span id="status-text" class="font-semibold">CONECTANDO...</span>
+                <div id="status-light" class="w-4 h-4 rounded-full bg-yellow-500"></div>
             </div>
         </header>
-
-        <main class="main-grid">
-            <div class="panel panel-left">
-                <div class="eye-container">
-                    <div class="eye-ring eye-ring-1"></div>
-                    <div class="eye-ring eye-ring-2"></div>
-                    <div class="eye-iris"></div>
-                </div>
-                <div class="server-info">
-                    <div class="info-label">SISTEMA MONITORADO</div>
-                    <div class="info-value" id="server-name">Servidor Local de Testes</div>
-                </div>
-                <div class="metrics-grid">
-                    <div>
-                        <div class="info-label">EVENTOS TOTAIS (SESSÃO)</div>
-                        <div class="info-value text-cyan" id="events-total">0</div>
-                    </div>
-                    <div>
-                        <div class="info-label">AMEAÇAS NEUTRALIZADAS</div>
-                        <div class="info-value text-red" id="threats-neutralized">0</div>
-                    </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="bg-gray-800 p-4 rounded-lg text-center">
+                <h2 class="text-sm font-bold text-gray-400">EVENTOS TOTAIS (SESSÃO)</h2>
+                <p id="events-today" class="text-3xl font-bold text-cyan-400">0</p>
+            </div>
+            <div class="bg-gray-800 p-4 rounded-lg text-center">
+                <h2 class="text-sm font-bold text-gray-400">AMEAÇAS NEUTRALIZADAS (SESSÃO)</h2>
+                <p id="threats-neutralized" class="text-3xl font-bold text-red-500">0</p>
+            </div>
+            <div class="bg-gray-800 p-4 rounded-lg text-center">
+                <h2 class="text-sm font-bold text-gray-400">ÚLTIMA AMEAÇA DETECTADA</h2>
+                <p id="last-threat" class="text-sm font-mono text-yellow-400 truncate">Nenhuma</p>
+            </div>
+        </div>
+        <div class="bg-gray-800 p-4 rounded-lg mb-6">
+            <h3 class="font-bold text-lg mb-2 text-red-400">Ameaças Críticas Detectadas</h3>
+            <table class="min-w-full text-sm">
+                <thead><tr class="text-left text-gray-400"><th class="p-2">Timestamp</th><th class="p-2">Tipo</th><th class="p-2">Detalhe</th><th class="p-2">Score</th><th class="p-2">Ação</th></tr></thead>
+                <tbody id="threats-table-body"></tbody>
+            </table>
+        </div>
+        <div class="space-y-4">
+            <div>
+                <button class="accordion-header">Log Completo de Eventos de Arquivo</button>
+                <div class="accordion-content"><table class="min-w-full text-sm"><tbody id="file-events-body"></tbody></table></div>
+            </div>
+            <div>
+                <button class="accordion-header">Log Completo de Eventos de Processo</button>
+                <div class="accordion-content">
+                    <table class="min-w-full text-sm">
+                        <thead><tr><th>Timestamp</th><th>Hostname</th><th>PID</th><th>Comando</th><th>Usuário</th><th>Score</th><th>Origem (Causalidade)</th></tr></thead>
+                        <tbody id="process-events-body"></tbody>
+                    </table>
                 </div>
             </div>
-
-            <div class="panel panel-right">
-                <div class="accordion">
-                    <button class="accordion-header threat-header">
-                        <span>AMEAÇAS CRÍTICAS EM QUARENTENA</span>
-                        <span class="arrow">&#9660;</span>
-                    </button>
-                    <div class="accordion-content">
-                        <table class="log-table">
-                            <thead id="threats-table-header" style="display: none;">
-                                <tr>
-                                    <th>Timestamp</th>
-                                    <th>Tipo</th>
-                                    <th>Detalhe</th>
-                                    <th>Score</th>
-                                    <th>Ação</th>
-                                </tr>
-                            </thead>
-                            <tbody id="threats-table-body">
-                                </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="accordion">
-                    <button class="accordion-header">
-                        <span>LOG DE ANÁLISE COMPLETO</span>
-                        <span class="arrow">&#9660;</span>
-                    </button>
-                    <div class="accordion-content">
-                        <table class="log-table">
-                            <tbody id="log-table-body">
-                                </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </main>
+        </div>
     </div>
-
     <script src="script.js"></script>
 </body>
 </html>
