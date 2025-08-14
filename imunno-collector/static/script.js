@@ -101,6 +101,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    const getThreatLevelClass = (score) => score >= 70 ? 'threat-high' : '';
+
     const connectWebSocket = () => {
         const isSecure = window.location.protocol === 'https:';
         const socketProtocol = isSecure ? 'wss://' : 'ws://';
@@ -114,12 +116,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         socket.onmessage = (message) => {
-            try {
-                const event = JSON.parse(message.data);
-                handleEvent(event);
-            } catch (error) {
-                console.error('Erro ao processar mensagem:', error);
-            }
+            try { handleEvent(JSON.parse(message.data)); } catch (error) { console.error('Erro ao processar mensagem:', error); }
         };
 
         socket.onclose = () => {
