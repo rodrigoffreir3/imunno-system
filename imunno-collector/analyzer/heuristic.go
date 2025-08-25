@@ -51,6 +51,20 @@ var regrasDeArquivo = []RegraHeuristica{
 		Padrao:    regexp.MustCompile(`(include|require)(_once)?\s*\(`),
 		Pontuacao: 5,
 	},
+
+	// Detecta a leitura de arquivos de sistema sensíveis.
+	{
+		Descricao: "Leitura de arquivos de configuração ou sistema",
+		Padrao:    regexp.MustCompile(`file_get_contents\s*\(\s*['"].*(\/etc\/passwd|wp-config\.php)['"]`),
+		Pontuacao: 30, // Score médio, pois pode haver falsos positivos em plugins de backup.
+	},
+
+	// Detecta o padrão de compressão + codificação, típico de exfiltração de dados.
+	{
+		Descricao: "Padrão de exfiltração de dados (compressão + codificação)",
+		Padrao:    regexp.MustCompile(`(gzcompress|gzdeflate)\s*\(.*base64_encode`), // Procura por gzcompress seguido de base64_encode
+		Pontuacao: 40,                                                               // Score alto, essa combinação é muito suspeita.
+	},
 }
 
 // >>>>>>>>>>>>>>>> REGRAS DE PROCESSO <<<<<<<<<<<<<<<<
