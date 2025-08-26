@@ -11,7 +11,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./postgres-init/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./postgres-init:/docker-entrypoint-initdb.d
     networks:
       - imunno-net
     healthcheck:
@@ -64,8 +64,7 @@ services:
       AGENT_WATCH_DIR: "/app/wordpress" 
       AGENT_QUARANTINE_DIR: "/app/quarantine"
     volumes:
-      # O volume foi mantido para que o agent vigie a pasta correta.
-      - ./wordpress:/app/wordpress 
+      - wordpress_files:/app/wordpress 
       - ./imunno-agent/quarantine:/app/quarantine
       - ./audit/audit.log:/var/log/audit/audit.log
     cap_add:
@@ -74,22 +73,24 @@ services:
     networks:
       - imunno-net
 
-  # --- SERVIÇO WORDPRESS CORRIGIDO ---
-  # Esta seção foi a única alterada para resolver o erro "Internal Server Error".
   wordpress_site:
-    build:
-      # Agora ele usa o nosso Dockerfile customizado da nova pasta 'imunno-web-server'.
-      context: ./imunno-web-server
+    image: wordpress:latest
     container_name: wordpress_site
     restart: always
     ports:
       - "8081:80"
     volumes:
-      - ./wordpress:/var/www/html
+      - wordpress_files:/var/www/html
+    environment:
+      WORDPRESS_DB_HOST: postgres
+      WORDPRESS_DB_USER: imunno_user
+      WORDPRESS_DB_PASSWORD: imunno_pass
+      WORDPRESS_DB_NAME: imunno_db
+    depends_on:
+      - postgres
     networks:
       - imunno-net
-  # --- FIM DA ALTERAÇÃO ---
-
+  
   imunno_simulador:
     build:
       context: ./tools/simulador-malicioso
@@ -131,6 +132,7 @@ services:
 
 volumes:
   pgdata:
+  wordpress_files: # <-- Diz ao Docker para criar e gerenciar este volume
 
 networks:
   imunno-net:
