@@ -86,8 +86,10 @@ services:
       WORDPRESS_DB_USER: imunno_user
       WORDPRESS_DB_PASSWORD: imunno_pass
       WORDPRESS_DB_NAME: imunno_db
+    # --- ALTERE ESTA SEÇÃO ---
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - imunno-net
   
@@ -129,6 +131,22 @@ services:
         COLLECTOR_URL: "http://imunno_collector:8080"
     networks:
       - imunno-net
+  
+  jupyter:
+    image: jupyter/scipy-notebook:latest
+    container_name: imunno_jupyter
+    ports:
+      - "8888:8888"
+    volumes:
+      # Mapeia a pasta do seu serviço de ML para o diretório de trabalho do Jupyter
+      - ./imunno-ml-service:/home/jovyan/work
+    networks:
+      - imunno-net
+    environment:
+      # Garante que o JupyterLab inicie por padrão
+      JUPYTER_ENABLE_LAB: "yes"
+
+
 
 volumes:
   pgdata:
