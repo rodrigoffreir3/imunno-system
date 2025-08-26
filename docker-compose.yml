@@ -74,7 +74,7 @@ services:
       - imunno-net
 
   wordpress_site:
-    image: wordpress:latest
+    build: ./wordpress-pg
     container_name: wordpress_site
     restart: always
     ports:
@@ -86,7 +86,6 @@ services:
       WORDPRESS_DB_USER: imunno_user
       WORDPRESS_DB_PASSWORD: imunno_pass
       WORDPRESS_DB_NAME: imunno_db
-    # --- ALTERE ESTA SEÇÃO ---
     depends_on:
       postgres:
         condition: service_healthy
