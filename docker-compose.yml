@@ -1,3 +1,5 @@
+# Arquivo: docker-compose.yml - Versão Final e Corrigida
+
 services:
   postgres:
     image: postgres:13
@@ -10,7 +12,9 @@ services:
     ports:
       - "5432:5432"
     volumes:
+      # Volume nomeado para os dados do banco, para persistência.
       - pgdata:/var/lib/postgresql/data
+      # Mapeia o diretório inteiro para executar todos os scripts .sql na inicialização.
       - ./postgres-init:/docker-entrypoint-initdb.d
     networks:
       - imunno-net
@@ -39,7 +43,7 @@ services:
     restart: always
     depends_on:
       postgres:
-        condition: service_healthy
+        condition: service_healthy # Garante que o collector espere o DB estar 100% pronto.
       imunno_ml:
         condition: service_started
     environment:
@@ -64,6 +68,7 @@ services:
       AGENT_WATCH_DIR: "/app/wordpress" 
       AGENT_QUARANTINE_DIR: "/app/quarantine"
     volumes:
+      # Usa o volume nomeado compartilhado para vigiar os arquivos do WordPress.
       - wordpress_files:/app/wordpress 
       - ./imunno-agent/quarantine:/app/quarantine
       - ./audit/audit.log:/var/log/audit/audit.log
@@ -74,12 +79,14 @@ services:
       - imunno-net
 
   wordpress_site:
+    # Usa a imagem customizada que construímos para ter suporte a PostgreSQL.
     build: ./wordpress-pg
     container_name: wordpress_site
     restart: always
     ports:
       - "8081:80"
     volumes:
+      # Usa o volume nomeado compartilhado para armazenar os arquivos do WordPress.
       - wordpress_files:/var/www/html
     environment:
       WORDPRESS_DB_HOST: postgres
@@ -88,10 +95,11 @@ services:
       WORDPRESS_DB_NAME: imunno_db
     depends_on:
       postgres:
-        condition: service_healthy
+        condition: service_healthy # Garante que o WP espere o DB estar 100% pronto.
     networks:
       - imunno-net
   
+  # --- Seção de Ferramentas (Simuladores e Jupyter) ---
   imunno_simulador:
     build:
       context: ./tools/simulador-malicioso
@@ -101,7 +109,7 @@ services:
     depends_on:
       - imunno_collector
     environment:
-        COLLECTOR_URL: "http://imunno_collector:8080"
+      COLLECTOR_URL: "http://imunno_collector:8080"
     networks:
       - imunno-net
 
@@ -114,7 +122,7 @@ services:
     depends_on:
       - imunno_collector
     environment:
-        COLLECTOR_URL: "http://imunno_collector:8080"
+      COLLECTOR_URL: "http://imunno_collector:8080"
     networks:
       - imunno-net
 
@@ -127,7 +135,7 @@ services:
     depends_on:
       - imunno_collector
     environment:
-        COLLECTOR_URL: "http://imunno_collector:8080"
+      COLLECTOR_URL: "http://imunno_collector:8080"
     networks:
       - imunno-net
   
@@ -137,20 +145,18 @@ services:
     ports:
       - "8888:8888"
     volumes:
-      # Mapeia a pasta do seu serviço de ML para o diretório de trabalho do Jupyter
       - ./imunno-ml-service:/home/jovyan/work
     networks:
       - imunno-net
     environment:
-      # Garante que o JupyterLab inicie por padrão
       JUPYTER_ENABLE_LAB: "yes"
 
-
-
+# Define os volumes nomeados que serão gerenciados pelo Docker.
 volumes:
   pgdata:
-  wordpress_files: # <-- Diz ao Docker para criar e gerenciar este volume
+  wordpress_files:
 
+# Define a rede customizada para a comunicação entre os serviços.
 networks:
   imunno-net:
     driver: bridge
