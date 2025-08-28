@@ -55,6 +55,17 @@ services:
     networks:
       - imunno-net
 
+  imunno_web_server:
+    build: ./imunno-web-server
+    container_name: imunno_web_server
+    restart: always
+    ports:
+      - "8081:80"
+    volumes:
+      - uploads_volume:/app/uploads
+    networks:
+      - imunno-net
+
   imunno_agent:
     build:
       context: ./imunno-agent
@@ -65,37 +76,15 @@ services:
     environment:
       COLLECTOR_URL: "ws://imunno_collector:8080/ws"
       AGENT_ID: "docker-agent-001"
-      AGENT_WATCH_DIR: "/app/wordpress" 
+      AGENT_WATCH_DIR: "/app/uploads" 
       AGENT_QUARANTINE_DIR: "/app/quarantine"
     volumes:
-      # Usa o volume nomeado compartilhado para vigiar os arquivos do WordPress.
-      - wordpress_files:/app/wordpress 
+      - uploads_volume:/app/uploads
       - ./imunno-agent/quarantine:/app/quarantine
       - ./audit/audit.log:/var/log/audit/audit.log
     cap_add:
       - AUDIT_WRITE
       - AUDIT_CONTROL
-    networks:
-      - imunno-net
-
-  wordpress_site:
-    # Usa a imagem customizada que construímos para ter suporte a PostgreSQL.
-    build: ./wordpress-pg
-    container_name: wordpress_site
-    restart: always
-    ports:
-      - "8081:80"
-    volumes:
-      # Usa o volume nomeado compartilhado para armazenar os arquivos do WordPress.
-      - wordpress_files:/var/www/html
-    environment:
-      WORDPRESS_DB_HOST: postgres
-      WORDPRESS_DB_USER: imunno_user
-      WORDPRESS_DB_PASSWORD: imunno_pass
-      WORDPRESS_DB_NAME: imunno_db
-    depends_on:
-      postgres:
-        condition: service_healthy # Garante que o WP espere o DB estar 100% pronto.
     networks:
       - imunno-net
   
@@ -154,7 +143,7 @@ services:
 # Define os volumes nomeados que serão gerenciados pelo Docker.
 volumes:
   pgdata:
-  wordpress_files:
+  uploads_volume:
 
 # Define a rede customizada para a comunicação entre os serviços.
 networks:
