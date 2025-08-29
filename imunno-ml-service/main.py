@@ -49,8 +49,8 @@ def predict(request: PredictionRequest):
         # Usamos 'predict' para obter a classificação (-1 para anomalia, 1 para normal)
         # e 'decision_function' para obter um score de confiança.
 
-        prediction = model.predict(df.values)
-        score = model.decision_function(df.values)
+        prediction = model.predict(df)
+        score = model.decision_function(df)
 
         # Converte o resultado para um formato mais legível
         # Se a predição for -1, é uma anomalia.
