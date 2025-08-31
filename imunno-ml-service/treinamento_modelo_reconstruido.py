@@ -6,7 +6,7 @@
 # In[1]:
 
 
-get_ipython().system('pip install pandas joblib scikit-learn')
+
 
 
 # In[2]:

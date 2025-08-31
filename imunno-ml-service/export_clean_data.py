@@ -10,7 +10,7 @@ log = logging.getLogger(__name__)
 def export():
     log.info("--- INICIANDO EXPORTAÇÃO DE DADOS LIMPOS ---")
     db_url = "postgresql://imunno_user:imunno_pass@postgres:5432/imunno_db"
-        output_csv_path = "exported_data.csv"
+    output_csv_path = "exported_data.csv"
 
     try:
         engine = create_engine(db_url)

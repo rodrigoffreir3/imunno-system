@@ -54,7 +54,7 @@ func main() {
 	// ETAPA 2: A INFILTRAÇÃO COM O ATAQUE MATRIOSCA
 	log.Printf("[ETAPA 2] Injetando arquivo 'Matriosca' em: %s", sleeperFilePath)
 	// --- ALTERAÇÃO APLICADA AQUI ---
-	sleeperContentBytes, err := os.ReadFile("../ataque_matriosca.php")
+	sleeperContentBytes, err := os.ReadFile("ataque_matriosca.php")
 	if err != nil {
 		log.Fatalf("ERRO: Não foi possível ler o arquivo 'ataque_matriosca.php'. Certifique-se de que ele está na pasta 'tools'.")
 	}
