@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -28,68 +29,83 @@ type ProcessEvent struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// Substitua APENAS a função main() no seu arquivo simulador_causalidade_v2.go
-
 func main() {
-	log.Println("--- INICIANDO SIMULAÇÃO 'GRAN FINALE' ---")
+	log.Println("--- INICIANDO SIMULADOR DE CAUSALIDADE v2 ---")
+
+	// Pega a URL do Collector do ambiente ou usa um padrão
 	collectorURL := os.Getenv("COLLECTOR_URL")
 	if collectorURL == "" {
 		collectorURL = "http://localhost:8080"
 	}
 
-	agentID := "gran-finale-agent-001"
-	hostname := "servidor-alvo-final"
-	apachePID := int32(200) // Usando PIDs diferentes para um novo teste
-	phpPID := int32(40555)
-	sleeperFilePath := "/var/www/html/wp-content/uploads/logo_updater.php" // Um nome de arquivo disfarçado
+	// Pega o número de eventos do primeiro argumento da linha de comando
+	numEvents := 10 // Padrão
+	if len(os.Args) > 1 {
+		n, err := strconv.Atoi(os.Args[1])
+		if err == nil {
+			numEvents = n
+		}
+	}
 
-	// ETAPA 1: O "PAI" NASCE (PROCESSO BENIGNO)
-	log.Printf("[ETAPA 1] Simulando o início do servidor Apache (PID: %d).", apachePID)
-	sendProcessEvent(collectorURL, ProcessEvent{
-		AgentID: agentID, Hostname: hostname, ProcessID: apachePID, ParentID: 1,
-		Command: "/usr/sbin/apache2 -k start", Username: "root", Timestamp: time.Now(),
-	})
-	time.Sleep(2 * time.Second)
+	log.Printf("Simulando %d pares de eventos (criação de arquivo + execução de processo)...", numEvents)
 
-	// ETAPA 2: A INFILTRAÇÃO COM O ATAQUE MATRIOSCA
-	log.Printf("[ETAPA 2] Injetando arquivo 'Matriosca' em: %s", sleeperFilePath)
-	// --- ALTERAÇÃO APLICADA AQUI ---
-	sleeperContentBytes, err := os.ReadFile("ataque_matriosca.php")
+	agentID := "causality-agent-002"
+	hostname := "webserver-prod-03"
+	basePID := int32(5000)
+
+	for i := 0; i < numEvents; i++ {
+		currentPID := basePID + int32(i)
+		filePath := fmt.Sprintf("/var/www/html/uploads/temp_script_%d.php", currentPID)
+		content := fmt.Sprintf("<?php echo 'hello from %d'; ?>", currentPID)
+
+		// 1. Evento de Criação de Arquivo
+		log.Printf("[%d/%d] Criando arquivo: %s", i+1, numEvents, filePath)
+		fileEvent := FileEvent{
+			AgentID:   agentID,
+			Hostname:  hostname,
+			FilePath:  filePath,
+			Content:   content,
+			Timestamp: time.Now(),
+		}
+		sendEvent(collectorURL, "/v1/events/file", fileEvent)
+
+		// Pequeno atraso para simular realismo
+		time.Sleep(500 * time.Millisecond)
+
+		// 2. Evento de Execução de Processo (com o arquivo recém-criado)
+		log.Printf("[%d/%d] Executando processo para o arquivo: %s (PID: %d)", i+1, numEvents, filePath, currentPID)
+		processEvent := ProcessEvent{
+			AgentID:   agentID,
+			Hostname:  hostname,
+			ProcessID: currentPID,
+			ParentID:  1234, // PID pai genérico para o servidor web (ex: Apache, Nginx)
+			Command:   fmt.Sprintf("/usr/bin/php %s", filePath),
+			Username:  "www-data",
+			Timestamp: time.Now(),
+		}
+		sendEvent(collectorURL, "/v1/events/process", processEvent)
+
+		time.Sleep(1 * time.Second)
+	}
+
+	log.Println("--- SIMULAÇÃO DE CAUSALIDADE v2 CONCLUÍDA ---")
+}
+
+func sendEvent(collectorURL, path string, data interface{}) {
+	jsonData, err := json.Marshal(data)
 	if err != nil {
-		log.Fatalf("ERRO: Não foi possível ler o arquivo 'ataque_matriosca.php'. Certifique-se de que ele está na pasta 'tools'.")
+		log.Printf("Erro ao converter evento para JSON: %v", err)
+		return
 	}
-	sleeperContent := string(sleeperContentBytes)
-	// --- FIM DA ALTERAÇÃO ---
 
-	sendFileEvent(collectorURL, FileEvent{
-		AgentID: agentID, Hostname: hostname, FilePath: sleeperFilePath, Content: sleeperContent, Timestamp: time.Now(),
-	})
-
-	// O "TIMER"
-	log.Println("[TIMER] Aguardando 15 segundos...")
-	time.Sleep(15 * time.Second)
-
-	// ETAPA 3: O DESPERTAR
-	log.Printf("[ETAPA 3] Apache (PID: %d) executa o script Matriosca (novo PID: %d).", apachePID, phpPID)
-	sendProcessEvent(collectorURL, ProcessEvent{
-		AgentID: agentID, Hostname: hostname, ProcessID: phpPID, ParentID: apachePID,
-		Command: fmt.Sprintf("/usr/bin/php %s", sleeperFilePath), Username: "www-data", Timestamp: time.Now(),
-	})
-	log.Println("--- SIMULAÇÃO 'GRAN FINALE' CONCLUÍDA ---")
-}
-
-func sendFileEvent(collectorURL string, event FileEvent) {
-	jsonData, _ := json.Marshal(event)
-	resp, err := http.Post(fmt.Sprintf("%s/v1/events/file", collectorURL), "application/json", bytes.NewBuffer(jsonData))
-	if err == nil {
-		resp.Body.Close()
+	resp, err := http.Post(fmt.Sprintf("%s%s", collectorURL, path), "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Printf("Erro ao enviar evento para %s: %v", path, err)
+		return
 	}
-}
+	defer resp.Body.Close()
 
-func sendProcessEvent(collectorURL string, event ProcessEvent) {
-	jsonData, _ := json.Marshal(event)
-	resp, err := http.Post(fmt.Sprintf("%s/v1/events/process", collectorURL), "application/json", bytes.NewBuffer(jsonData))
-	if err == nil {
-		resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		log.Printf("Resposta inesperada do collector para %s: %s", path, resp.Status)
 	}
 }

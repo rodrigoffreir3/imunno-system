@@ -1,8 +1,115 @@
-body { background-color: #111827; color: #d1d5db; font-family: sans-serif; }
-.threat-high { background-color: rgba(239, 68, 68, 0.2); color: #fca5a5; }
-.threat-medium { background-color: rgba(245, 158, 11, 0.2); color: #fcd34d; }
-.threat-low { background-color: rgba(234, 179, 8, 0.1); }
-.accordion-header { background-color: #374151; color: #f3f4f6; cursor: pointer; padding: 1rem; width: 100%; text-align: left; border: none; outline: none; transition: 0.4s; border-radius: 8px; margin-top: 1rem; }
-.accordion-content { padding: 0 18px; background-color: #1f2937; display: none; overflow: hidden; border-radius: 0 0 8px 8px; }
-.action-button { background-color: #4b5563; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer; }
-.action-button:hover { background-color: #6b7280; }
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto+Mono:wght@400;700&display=swap');
+
+:root {
+    --primary-color: #00ffff; /* Cyan */
+    --secondary-color: #39ff14; /* Neon Green */
+    --background-color: #0a0a0f;
+    --surface-color: #101820;
+    --text-color: #e0e0e0;
+    --grid-color: rgba(0, 255, 255, 0.1);
+    --threat-high-bg: rgba(255, 0, 80, 0.2);
+    --threat-high-text: #ff4d8c;
+    --threat-medium-bg: rgba(255, 215, 0, 0.15);
+    --threat-medium-text: #ffd700;
+}
+
+body {
+    background-color: var(--background-color);
+    color: var(--text-color);
+    font-family: 'Roboto Mono', monospace;
+    background-image: 
+        linear-gradient(var(--grid-color) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+    background-size: 20px 20px;
+    text-shadow: 0 0 2px rgba(0, 255, 255, 0.3);
+}
+
+.container { max-width: 1200px; }
+
+.header-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 2.5rem;
+    color: var(--primary-color);
+    text-shadow:
+        0 0 5px var(--primary-color),
+        0 0 10px var(--primary-color),
+        0 0 20px #fff;
+    letter-spacing: 2px;
+}
+
+.status-box {
+    background-color: rgba(16, 24, 32, 0.8);
+    border: 1px solid var(--primary-color);
+    box-shadow: 0 0 10px var(--primary-color) inset;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+}
+
+.status-light {
+    width: 1rem; height: 1rem; border-radius: 50%;
+    transition: background-color 0.5s ease;
+    box-shadow: 0 0 8px;
+}
+.status-ok { background-color: var(--secondary-color); box-shadow: 0 0 8px var(--secondary-color); }
+.status-error { background-color: var(--threat-high-text); box-shadow: 0 0 8px var(--threat-high-text); }
+.status-connecting { background-color: #ffd700; box-shadow: 0 0 8px #ffd700; animation: pulse 1.5s infinite; }
+
+@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+
+.metric-card {
+    background-color: var(--surface-color);
+    border: 1px solid var(--grid-color);
+    border-radius: 4px;
+    padding: 1rem;
+    text-align: center;
+    backdrop-filter: blur(5px);
+}
+
+.metric-card h2 { color: var(--primary-color); font-size: 0.8rem; letter-spacing: 1px; margin-bottom: 0.5rem; }
+.metric-card p { font-family: 'Orbitron', sans-serif; font-size: 2rem; }
+
+.table-container {
+    background-color: var(--surface-color);
+    border: 1px solid var(--grid-color);
+    padding: 1rem;
+}
+
+.table-container h3 { font-family: 'Orbitron', sans-serif; color: var(--threat-high-text); }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid var(--grid-color); font-size: 0.9rem; }
+th { color: var(--primary-color); font-weight: bold; }
+
+.threat-high { background-color: var(--threat-high-bg); color: var(--threat-high-text); }
+.threat-medium { background-color: var(--threat-medium-bg); color: var(--threat-medium-text); }
+.threat-low { color: var(--text-color); }
+
+.accordion-header {
+    background-color: var(--surface-color);
+    color: var(--primary-color);
+    cursor: pointer; padding: 1rem; width: 100%; text-align: left;
+    border: 1px solid var(--grid-color); outline: none; transition: background-color 0.4s;
+    font-family: 'Orbitron', sans-serif;
+}
+
+.accordion-header.active, .accordion-header:hover { background-color: #1a2838; }
+
+.accordion-content {
+    padding: 0 1rem; background-color: transparent;
+    max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out;
+    border-left: 1px solid var(--grid-color);
+    border-right: 1px solid var(--grid-color);
+}
+
+.action-button {
+    background-color: transparent;
+    color: var(--secondary-color);
+    padding: 5px 10px; border: 1px solid var(--secondary-color);
+    border-radius: 4px; cursor: pointer; transition: all 0.3s ease;
+    text-shadow: 0 0 5px var(--secondary-color);
+}
+.action-button:hover { background-color: var(--secondary-color); color: var(--background-color); text-shadow: none; }
+
+.truncate { max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.details-json { font-size: 0.8rem; color: #888; }
+.causality-link { color: var(--secondary-color); font-weight: bold; cursor: pointer; }

@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS process_events (
     command TEXT,
     username VARCHAR(255),
     threat_score INT DEFAULT 0,
+    origin_hash VARCHAR(64), -- <<<<<<< COLUNA DE CAUSALIDADE ADICIONADA
     timestamp TIMESTAMPTZ NOT NULL
 );
 

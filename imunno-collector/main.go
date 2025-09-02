@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -16,10 +18,9 @@ import (
 	"imunno-collector/ml_client"
 
 	"github.com/gorilla/websocket"
-	"github.com/jackc/pgx/v5" // --- CORREÇÃO APLICADA AQUI ---
+	"github.com/jackc/pgx/v5"
 )
 
-// main continua igual
 func main() {
 	log.Println("--- INICIANDO IMUNNO COLLECTOR ---")
 
@@ -74,6 +75,12 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 		if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
 			http.Error(w, "Erro ao decodificar o corpo da requisição", http.StatusBadRequest)
 			return
+		}
+
+		// Garante que o hash do arquivo seja calculado se não for enviado
+		if event.FileHashSHA256 == "" && event.Content != "" {
+			hash := sha256.Sum256([]byte(event.Content))
+			event.FileHashSHA256 = hex.EncodeToString(hash[:])
 		}
 
 		log.Printf("Evento de arquivo recebido de %s: %s", event.AgentID, event.FilePath)
@@ -144,6 +151,11 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 			return
 		}
 
+		// Armazena o evento no cache de causalidade se ele não for whitelisted
+		if !event.IsWhitelisted {
+			analyzer.StoreFileEvent(event)
+		}
+
 		eventJSON, _ := json.Marshal(event)
 		h.Broadcast <- eventJSON
 
@@ -166,17 +178,13 @@ func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 
 		log.Printf("Evento de processo recebido de %s: PID=%d, PPID=%d, Comando=%s", event.AgentID, event.ProcessID, event.ParentID, event.Command)
 
-		err := db.InsertProcessEvent(
-			event.AgentID,
-			event.Hostname,
-			event.Command,
-			event.Username,
-			event.ProcessID,
-			event.ParentID,
-			event.ThreatScore,
-			event.Timestamp,
-		)
-		if err != nil {
+		// Lógica de Causalidade
+		if hash, found := analyzer.FindCausality(event.Command); found {
+			event.OriginHash = hash
+			log.Printf("CAUSALIDADE ENCONTRADA: Processo PID %d originado pelo arquivo com hash %s", event.ProcessID, hash)
+		}
+
+		if err := db.InsertProcessEvent(event); err != nil {
 			log.Printf("Erro ao inserir evento de processo no banco de dados: %v", err)
 			http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
 			return
@@ -184,57 +192,6 @@ func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 
 		eventJSON, _ := json.Marshal(event)
 		h.Broadcast <- eventJSON
-
-		go func(eventToInvestigate events.ProcessEvent) {
-			time.Sleep(200 * time.Millisecond)
-
-			lineage, err := traceProcessLineage(db, &eventToInvestigate)
-			if err != nil {
-				log.Printf("ERRO durante a análise de causalidade para o PID %d: %v", eventToInvestigate.ProcessID, err)
-			}
-
-			if len(lineage) > 1 {
-				log.Printf("--- INÍCIO DA LINHAGEM DO PROCESSO (PID: %d) ---", eventToInvestigate.ProcessID)
-				isCorrelated := false
-				for _, p := range lineage {
-					log.Printf("  -> PID: %d (Pai: %d) | Comando: %s", p.ProcessID, p.ParentID, p.Command)
-					parts := strings.Fields(p.Command)
-					if len(parts) > 1 {
-						filePath := parts[1]
-						fileOrigins, err := db.FindFileEventsInTimeWindow(p.Hostname, p.Timestamp, 10*time.Minute)
-						if err != nil {
-							log.Printf("ERRO ao buscar arquivos de origem para %s: %v", filePath, err)
-							continue
-						}
-
-						for _, file := range fileOrigins {
-							if file.FilePath == filePath && file.ThreatScore > 0 {
-								log.Printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-								log.Printf("!!! CAUSALIDADE DETECTADA !!!")
-								log.Printf("!!! Processo PID %d originado do arquivo: %s", p.ProcessID, file.FilePath)
-
-								originalProcessScore := eventToInvestigate.ThreatScore
-								newScore := originalProcessScore + file.ThreatScore
-								eventToInvestigate.ThreatScore = newScore
-
-								log.Printf("!!! Score do Arquivo: %d | Score Original do Processo: %d | Novo Score Combinado: %d", file.ThreatScore, originalProcessScore, newScore)
-								log.Printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-
-								db.UpdateProcessEventScore(eventToInvestigate.ID, newScore)
-								updatedEventJSON, _ := json.Marshal(eventToInvestigate)
-								h.Broadcast <- updatedEventJSON
-								isCorrelated = true
-								break
-							}
-						}
-					}
-					if isCorrelated {
-						break
-					}
-				}
-				log.Printf("--- FIM DA LINHAGEM DO PROCESSO ---")
-			}
-		}(event)
 
 		w.WriteHeader(http.StatusAccepted)
 	}

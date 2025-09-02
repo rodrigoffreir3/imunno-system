@@ -59,10 +59,10 @@ func (db *Database) InsertFileEvent(agentID, hostname, filePath, fileHash, fileC
 }
 
 // InsertProcessEvent insere um novo evento de processo no banco de dados.
-func (db *Database) InsertProcessEvent(agentID, hostname, command, username string, processID, parentID int32, threatScore int, timestamp time.Time) error {
-	query := `INSERT INTO process_events (agent_id, hostname, command, username, process_id, parent_id, threat_score, timestamp)
-	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
-	_, err := db.Pool.Exec(context.Background(), query, agentID, hostname, command, username, processID, parentID, threatScore, timestamp)
+func (db *Database) InsertProcessEvent(event events.ProcessEvent) error {
+	query := `INSERT INTO process_events (agent_id, hostname, command, username, process_id, parent_id, threat_score, origin_hash, timestamp)
+	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	_, err := db.Pool.Exec(context.Background(), query, event.AgentID, event.Hostname, event.Command, event.Username, event.ProcessID, event.ParentID, event.ThreatScore, event.OriginHash, event.Timestamp)
 	return err
 }
 

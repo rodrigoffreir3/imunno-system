@@ -31,6 +31,7 @@ type ProcessEvent struct {
 	Command     string    `json:"command"`
 	Username    string    `json:"username"`
 	ThreatScore int       `json:"threat_score"`
+	OriginHash  string    `json:"origin_hash,omitempty"` // Campo para o hash do arquivo de origem
 }
 
 // CommandMessage define a estrutura para um comando enviado do collector para o agent.
