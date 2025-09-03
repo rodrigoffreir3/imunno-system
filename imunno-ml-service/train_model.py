@@ -10,7 +10,8 @@ from sklearn.ensemble import IsolationForest
 def train():
     print("--- INICIANDO PROCESSO DE TREINAMENTO DO MODELO IMUNNO (A PARTIR DE CSV) ---")
     warnings.filterwarnings('ignore')
-    input_csv_path = "exported_data.csv"
+    input_csv_path = "imunno-ml-service/exported_data.csv" # Caminho corrigido
+    output_model_path = "imunno-ml-service/imunno_model.joblib" # Caminho corrigido
 
     print(f"[PASSO 1/3] Carregando dados do arquivo '{input_csv_path}'...")
     try:
@@ -42,8 +43,8 @@ def train():
         # Usando o contamination que ajustamos anteriormente
         model = IsolationForest(contamination=0.01, random_state=42)
         model.fit(features)
-        joblib.dump(model, 'imunno_model.joblib')
-        print("-> Modelo treinado e salvo com sucesso em 'imunno_model.joblib'.")
+        joblib.dump(model, output_model_path)
+        print(f"-> Modelo treinado e salvo com sucesso em '{output_model_path}'.")
     else:
         print("-> Nenhum dado para treinar. Modelo não foi salvo.")
 

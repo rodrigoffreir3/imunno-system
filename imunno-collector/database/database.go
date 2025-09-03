@@ -8,7 +8,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/jackc/pgx"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -73,124 +73,36 @@ func (db *Database) UpdateFileEventThreatScore(id int, newScore int) error {
 	return err
 }
 
-// FindFileEventByTime busca por um evento de arquivo em um intervalo de tempo.
-func (db *Database) FindFileEventByTime(hostname string, since time.Time) (*FileEvent, error) {
-	var event FileEvent
-	query := "SELECT id, file_path, threat_score FROM file_events WHERE hostname = $1 AND timestamp >= $2 ORDER BY timestamp DESC LIMIT 1"
-	err := db.Pool.QueryRow(context.Background(), query, hostname, since).Scan(&event.ID, &event.FilePath, &event.ThreatScore)
-	if err != nil {
-		return nil, err
-	}
-	return &event, nil
-}
+// FindOriginFileEvent busca o evento de arquivo mais provável que originou um processo.
+// Ele procura pelo evento de arquivo mais recente no mesmo host, ocorrido até 30s antes do processo.
+func (db *Database) FindOriginFileEvent(hostname string, processTimestamp time.Time) (*events.FileEvent, error) {
+	var origin events.FileEvent
+	windowStart := processTimestamp.Add(-30 * time.Second)
 
-// FileEvent representa a estrutura de dados para a tabela file_events.
-type FileEvent struct {
-	ID          int
-	FilePath    string
-	ThreatScore int
-}
+	query := `
+		SELECT id, file_path, file_hash_sha256, file_content, threat_score
+		FROM file_events
+		WHERE hostname = $1
+		  AND timestamp BETWEEN $2 AND $3
+		ORDER BY timestamp DESC
+		LIMIT 1`
 
-// Adicione esta função no final do arquivo database.go
-
-// FindProcessByPID busca um evento de processo pelo seu ID de processo.
-func (db *Database) FindProcessByPID(pid int32, hostname string) (*events.ProcessEvent, error) {
-	query := `SELECT id, agent_id, hostname, process_id, parent_id, command, username, threat_score, timestamp 
-	          FROM process_events 
-	          WHERE process_id = $1 AND hostname = $2
-	          ORDER BY timestamp DESC
-	          LIMIT 1`
-
-	var event events.ProcessEvent
-	err := db.Pool.QueryRow(context.Background(), query, pid, hostname).Scan(
-		&event.ID,
-		&event.AgentID,
-		&event.Hostname,
-		&event.ProcessID,
-		&event.ParentID,
-		&event.Command,
-		&event.Username,
-		&event.ThreatScore,
-		&event.Timestamp,
+	err := db.Pool.QueryRow(context.Background(), query, hostname, windowStart, processTimestamp).Scan(
+		&origin.ID,
+		&origin.FilePath,
+		&origin.FileHashSHA256,
+		&origin.Content,
+		&origin.ThreatScore,
 	)
 
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return nil, nil // Retorna nil se nenhum processo for encontrado, não é um erro fatal.
+			return nil, nil // Nenhum arquivo encontrado na janela de tempo, não é um erro.
 		}
-		return nil, err
+		return nil, err // Outro erro de banco de dados.
 	}
 
-	return &event, nil
-}
-
-// Adicione esta nova função no final do arquivo database.go
-
-// FindFileEventsInTimeWindow busca por eventos de arquivo em uma janela de tempo específica
-// que antecede um determinado timestamp para um hostname.
-func (db *Database) FindFileEventsInTimeWindow(hostname string, before time.Time, window time.Duration) ([]events.FileEvent, error) {
-	startTime := before.Add(-window)
-
-	query := `SELECT id, agent_id, hostname, file_path, file_hash_sha256, threat_score, timestamp
-	          FROM file_events 
-	          WHERE hostname = $1 AND timestamp BETWEEN $2 AND $3
-	          ORDER BY timestamp DESC`
-
-	rows, err := db.Pool.Query(context.Background(), query, hostname, startTime, before)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var eventsFound []events.FileEvent
-	for rows.Next() {
-		var event events.FileEvent
-		if err := rows.Scan(&event.ID, &event.AgentID, &event.Hostname, &event.FilePath, &event.FileHashSHA256, &event.ThreatScore, &event.Timestamp); err != nil {
-			return nil, err
-		}
-		eventsFound = append(eventsFound, event)
-	}
-
-	return eventsFound, nil
-}
-
-// FindFileEventByPath busca o evento de arquivo mais recente para um caminho específico.
-func (db *Database) FindFileEventByPath(filePath string, hostname string) (*events.FileEvent, error) {
-	query := `SELECT id, agent_id, hostname, file_path, file_hash_sha256, threat_score, timestamp
-	          FROM file_events 
-	          WHERE file_path = $1 AND hostname = $2
-	          ORDER BY timestamp DESC
-	          LIMIT 1`
-
-	var event events.FileEvent
-	err := db.Pool.QueryRow(context.Background(), query, &filePath, &hostname).Scan(
-		&event.ID,
-		&event.AgentID,
-		&event.Hostname,
-		&event.FilePath,
-		&event.FileHashSHA256,
-		&event.ThreatScore,
-		&event.Timestamp,
-	)
-
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, nil // Nenhum evento encontrado, não é um erro fatal.
-		}
-		return nil, err
-	}
-
-	return &event, nil
-}
-
-// UpdateProcessEventScore atualiza a pontuação de ameaça de um evento de processo existente.
-func (db *Database) UpdateProcessEventScore(eventID int, newScore int) error {
-	query := `UPDATE process_events SET threat_score = $1 WHERE id = $2`
-	_, err := db.Pool.Exec(context.Background(), query, newScore, eventID)
-	if err != nil {
-		log.Printf("ERRO ao atualizar o score do evento de processo ID %d: %v", eventID, err)
-	}
-	return err
+	return &origin, nil
 }
 
 // AddHashToWhitelist adiciona um novo hash de arquivo à tabela de whitelist.

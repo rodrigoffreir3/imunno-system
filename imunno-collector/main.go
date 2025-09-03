@@ -18,7 +18,6 @@ import (
 	"imunno-collector/ml_client"
 
 	"github.com/gorilla/websocket"
-	"github.com/jackc/pgx/v5"
 )
 
 func main() {
@@ -49,7 +48,7 @@ func main() {
 	mlClient := ml_client.New(cfg.MLServiceURL)
 
 	http.HandleFunc("/v1/events/file", fileEventHandler(db, h, mlClient, cfg.EnableQuarantine))
-	http.HandleFunc("/v1/events/process", processEventHandler(db, h))
+	http.HandleFunc("/v1/events/process", processEventHandler(db, h, mlClient, cfg.EnableQuarantine))
 	http.HandleFunc("/v1/whitelist/add", whitelistAddHandler(db))
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(h, w, r)
@@ -77,7 +76,6 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 			return
 		}
 
-		// Garante que o hash do arquivo seja calculado se não for enviado
 		if event.FileHashSHA256 == "" && event.Content != "" {
 			hash := sha256.Sum256([]byte(event.Content))
 			event.FileHashSHA256 = hex.EncodeToString(hash[:])
@@ -107,9 +105,9 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 				if err != nil {
 					log.Printf("Erro ao chamar o serviço de ML: %v", err)
 				} else {
-					log.Printf("Predição da IA: Anomalia=%t, Confiança=%.2f", prediction.IsAnomaly, prediction.Confidence)
+					log.Printf("Predição da IA para arquivo: Anomalia=%t, Confiança=%.2f", prediction.IsAnomaly, prediction.Confidence)
 					if prediction.IsAnomaly {
-						log.Printf("IA DETECTOU ANOMALIA. Elevando a pontuação de ameaça.")
+						log.Printf("IA DETECTOU ANOMALIA no arquivo. Elevando a pontuação de ameaça.")
 						event.ThreatScore = 95
 					}
 				}
@@ -121,39 +119,14 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 
 		if enableQuarantine && event.ThreatScore >= 70 {
 			log.Printf("AMEAÇA CRÍTICA DETECTADA [Score: %d] para o arquivo %s. Enviando comando de quarentena para o agente %s.", event.ThreatScore, event.FilePath, event.AgentID)
-
-			quarantineCommand := events.CommandMessage{
-				Action: "quarantine",
-				Payload: map[string]string{
-					"file_path": event.FilePath,
-				},
-			}
-
-			commandJSON, _ := json.Marshal(quarantineCommand)
-			h.SendCommandToAgent(event.AgentID, commandJSON)
+			h.SendCommandToAgent(event.AgentID, quarantineCommand(event.FilePath))
 		}
 
-		_, err = db.InsertFileEvent(
-			event.AgentID,
-			event.Hostname,
-			event.FilePath,
-			event.FileHashSHA256,
-			event.Content,
-			event.ThreatScore,
-			event.AnalysisFindings,
-			event.IsWhitelisted,
-			event.QuarantinedPath,
-			event.Timestamp,
-		)
+		_, err = db.InsertFileEvent(event.AgentID, event.Hostname, event.FilePath, event.FileHashSHA256, event.Content, event.ThreatScore, event.AnalysisFindings, event.IsWhitelisted, event.QuarantinedPath, event.Timestamp)
 		if err != nil {
 			log.Printf("Erro ao inserir evento de arquivo no banco de dados: %v", err)
 			http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
 			return
-		}
-
-		// Armazena o evento no cache de causalidade se ele não for whitelisted
-		if !event.IsWhitelisted {
-			analyzer.StoreFileEvent(event)
 		}
 
 		eventJSON, _ := json.Marshal(event)
@@ -163,7 +136,7 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 	}
 }
 
-func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
+func processEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLClient, enableQuarantine bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
@@ -176,12 +149,36 @@ func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 			return
 		}
 
-		log.Printf("Evento de processo recebido de %s: PID=%d, PPID=%d, Comando=%s", event.AgentID, event.ProcessID, event.ParentID, event.Command)
+		log.Printf("Evento de processo recebido de %s: PID=%d, Comando=%s", event.AgentID, event.ProcessID, event.Command)
 
-		// Lógica de Causalidade
-		if hash, found := analyzer.FindCausality(event.Command); found {
-			event.OriginHash = hash
-			log.Printf("CAUSALIDADE ENCONTRADA: Processo PID %d originado pelo arquivo com hash %s", event.ProcessID, hash)
+		var isAnomaly bool
+		// LÓGICA DE DETECÇÃO DE PROCESSO VIA HEURÍSTICA
+		if strings.Contains(event.Command, "nc -e") || strings.Contains(event.Command, "/bin/bash") {
+			log.Printf("[HEURÍSTICA] Comando de processo suspeito detectado: %s", event.Command)
+			isAnomaly = true
+		}
+
+		if isAnomaly {
+			event.ThreatScore = 100 // Processo é considerado crítico
+			log.Printf("PROCESSO ANÔMALO DETECTADO. Iniciando análise de causalidade.")
+
+			originFile, err := db.FindOriginFileEvent(event.Hostname, event.Timestamp)
+			if err != nil {
+				log.Printf("[CAUSALIDADE] Erro ao buscar arquivo de origem: %v", err)
+			} else if originFile != nil {
+				log.Printf("[CAUSALIDADE] ENCONTRADA! Processo malicioso (PID: %d) foi originado pelo arquivo: %s", event.ProcessID, originFile.FilePath)
+				event.OriginHash = originFile.FileHashSHA256
+
+				if err := db.UpdateFileEventThreatScore(originFile.ID, 100); err != nil {
+					log.Printf("Erro ao atualizar pontuação do arquivo de origem %s: %v", originFile.FilePath, err)
+				}
+				if enableQuarantine {
+					log.Printf("Enviando comando de quarentena para o arquivo de origem %s.", originFile.FilePath)
+					h.SendCommandToAgent(event.AgentID, quarantineCommand(originFile.FilePath))
+				}
+			} else {
+				log.Printf("[CAUSALIDADE] Nenhum arquivo de origem encontrado no banco de dados para o processo.")
+			}
 		}
 
 		if err := db.InsertProcessEvent(event); err != nil {
@@ -197,13 +194,20 @@ func processEventHandler(db *database.Database, h *hub.Hub) http.HandlerFunc {
 	}
 }
 
+func quarantineCommand(filePath string) []byte {
+	cmd := events.CommandMessage{
+		Action: "quarantine",
+		Payload: map[string]string{"file_path": filePath},
+	}
+	jsonCmd, _ := json.Marshal(cmd)
+	return jsonCmd
+}
+
 func serveWs(h *hub.Hub, w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
-		CheckOrigin: func(r *http.Request) bool {
-			return true
-		},
+		CheckOrigin: func(r *http.Request) bool { return true },
 	}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -222,37 +226,6 @@ func serveWs(h *hub.Hub, w http.ResponseWriter, r *http.Request) {
 
 	go client.WritePump()
 	go client.ReadPump()
-}
-
-func traceProcessLineage(db *database.Database, initialEvent *events.ProcessEvent) ([]*events.ProcessEvent, error) {
-	lineage := []*events.ProcessEvent{initialEvent}
-	currentEvent := initialEvent
-
-	for i := 0; i < 5; i++ {
-		if currentEvent.ParentID == 0 {
-			break
-		}
-
-		log.Printf("[ANÁLISE DE CAUSALIDADE] Buscando pai do PID %d (PPID: %d)", currentEvent.ProcessID, currentEvent.ParentID)
-
-		parentEvent, err := db.FindProcessByPID(currentEvent.ParentID, currentEvent.Hostname)
-		if err != nil {
-			if err == pgx.ErrNoRows {
-				log.Printf("[ANÁLISE DE CAUSALIDADE] Pai (PPID: %d) não encontrado no banco de dados.", currentEvent.ParentID)
-				break
-			}
-			return nil, err
-		}
-
-		if parentEvent == nil {
-			break
-		}
-
-		lineage = append([]*events.ProcessEvent{parentEvent}, lineage...)
-		currentEvent = parentEvent
-	}
-
-	return lineage, nil
 }
 
 func whitelistAddHandler(db *database.Database) http.HandlerFunc {
