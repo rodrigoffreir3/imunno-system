@@ -1,115 +1,214 @@
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto+Mono:wght@400;700&display=swap');
 
 :root {
-    --primary-color: #00ffff; /* Cyan */
-    --secondary-color: #39ff14; /* Neon Green */
-    --background-color: #0a0a0f;
-    --surface-color: #101820;
+    --primary-color: #00ffff;
+    --secondary-color: #39ff14;
+    --alert-color: #ff4d8c;
+    --background-color: #000;
+    --surface-color: rgba(16, 24, 32, 0.75);
     --text-color: #e0e0e0;
-    --grid-color: rgba(0, 255, 255, 0.1);
-    --threat-high-bg: rgba(255, 0, 80, 0.2);
-    --threat-high-text: #ff4d8c;
-    --threat-medium-bg: rgba(255, 215, 0, 0.15);
-    --threat-medium-text: #ffd700;
+    --grid-color: rgba(0, 255, 255, 0.15);
+}
+
+* {
+    box-sizing: border-box;
 }
 
 body {
     background-color: var(--background-color);
     color: var(--text-color);
     font-family: 'Roboto Mono', monospace;
-    background-image: 
-        linear-gradient(var(--grid-color) 1px, transparent 1px),
-        linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
-    background-size: 20px 20px;
-    text-shadow: 0 0 2px rgba(0, 255, 255, 0.3);
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
 }
 
-.container { max-width: 1200px; }
-
-.header-title {
-    font-family: 'Orbitron', sans-serif;
-    font-size: 2.5rem;
-    color: var(--primary-color);
-    text-shadow:
-        0 0 5px var(--primary-color),
-        0 0 10px var(--primary-color),
-        0 0 20px #fff;
-    letter-spacing: 2px;
+/* --- FUNDO DE ESTRELAS ANIMADO --- */
+@keyframes move-stars {
+    from {transform: translateY(0px);}
+    to {transform: translateY(-2000px);}
 }
 
-.status-box {
-    background-color: rgba(16, 24, 32, 0.8);
-    border: 1px solid var(--primary-color);
-    box-shadow: 0 0 10px var(--primary-color) inset;
-    border-radius: 8px;
-    padding: 0.5rem 1rem;
+#stars1, #stars2, #stars3 {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    background-repeat: repeat;
+    background-position: 0 0;
 }
 
-.status-light {
-    width: 1rem; height: 1rem; border-radius: 50%;
-    transition: background-color 0.5s ease;
-    box-shadow: 0 0 8px;
+#stars1 {
+    background-image: url('https://www.transparenttextures.com/patterns/stardust.png');
+    animation: move-stars 200s linear infinite;
 }
-.status-ok { background-color: var(--secondary-color); box-shadow: 0 0 8px var(--secondary-color); }
-.status-error { background-color: var(--threat-high-text); box-shadow: 0 0 8px var(--threat-high-text); }
-.status-connecting { background-color: #ffd700; box-shadow: 0 0 8px #ffd700; animation: pulse 1.5s infinite; }
 
-@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+#stars2 {
+    background-image: url('https://www.transparenttextures.com/patterns/stardust.png');
+    background-size: 500px 500px;
+    animation: move-stars 150s linear infinite;
+    opacity: 0.6;
+}
 
-.metric-card {
+#stars3 {
+    background-image: url('https://www.transparenttextures.com/patterns/stardust.png');
+    background-size: 250px 250px;
+    animation: move-stars 100s linear infinite;
+    opacity: 0.8;
+}
+
+/* --- OLHO DIGITAL --- */
+#eye-container {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 400px;
+    height: 400px;
+    opacity: 0.15;
+    z-index: 1;
+}
+
+#eye-sclera {
+    width: 100%;
+    height: 100%;
+    border: 2px solid var(--primary-color);
+    border-radius: 50%;
+    position: relative;
+    overflow: hidden;
+}
+
+#eye-iris {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 50%;
+    height: 50%;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(circle, var(--primary-color) 0%, rgba(0, 255, 255, 0) 70%);
+    border-radius: 50%;
+    transition: background 0.5s ease;
+}
+
+#eye-pupil {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20%;
+    height: 20%;
+    transform: translate(-50%, -50%);
+    background-color: #000;
+    border-radius: 50%;
+}
+
+.scan-line {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background-color: var(--primary-color);
+    box-shadow: 0 0 10px var(--primary-color);
+    animation: scan 5s linear infinite;
+}
+
+@keyframes scan {
+    0% { top: 0; }
+    50% { top: 100%; }
+    100% { top: 0; }
+}
+
+/* Estado de Alerta do Olho */
+#eye-container.alert #eye-sclera { border-color: var(--alert-color); }
+#eye-container.alert #eye-iris { background: radial-gradient(circle, var(--alert-color) 0%, rgba(255, 77, 140, 0) 70%); }
+#eye-container.alert .scan-line { background-color: var(--alert-color); box-shadow: 0 0 10px var(--alert-color); animation-duration: 0.5s; }
+
+
+/* --- JANELAS FLUTUANTES --- */
+#desktop { z-index: 10; }
+
+.window {
+    position: absolute;
     background-color: var(--surface-color);
+    border: 1px solid var(--grid-color);
+    border-radius: 8px;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(10px);
+    display: flex;
+    flex-direction: column;
+}
+
+.window-header {
+    background-color: rgba(0, 255, 255, 0.1);
+    padding: 8px 12px;
+    cursor: move;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    color: var(--primary-color);
+    border-bottom: 1px solid var(--grid-color);
+    user-select: none;
+}
+
+.window.dragging {
+    opacity: 0.8;
+    box-shadow: 0 0 40px var(--primary-color);
+}
+
+.window-content {
+    padding: 1rem;
+    flex-grow: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* --- COMPONENTES DENTRO DAS JANELAS --- */
+.status-box {
+    display: flex; align-items: center; gap: 0.75rem;
+    background-color: rgba(0,0,0,0.3);
     border: 1px solid var(--grid-color);
     border-radius: 4px;
-    padding: 1rem;
-    text-align: center;
-    backdrop-filter: blur(5px);
+    padding: 0.5rem 1rem;
+    margin-bottom: 1rem;
 }
 
-.metric-card h2 { color: var(--primary-color); font-size: 0.8rem; letter-spacing: 1px; margin-bottom: 0.5rem; }
-.metric-card p { font-family: 'Orbitron', sans-serif; font-size: 2rem; }
+.status-light { width: 1rem; height: 1rem; border-radius: 50%; transition: background-color 0.5s ease; box-shadow: 0 0 8px; }
+.status-ok { background-color: var(--secondary-color); box-shadow: 0 0 8px var(--secondary-color); }
+.status-error { background-color: var(--alert-color); box-shadow: 0 0 8px var(--alert-color); }
+.status-connecting { background-color: #ffd700; box-shadow: 0 0 8px #ffd700; animation: pulse 1.5s infinite; }
 
-.table-container {
-    background-color: var(--surface-color);
-    border: 1px solid var(--grid-color);
-    padding: 1rem;
-}
+.metrics-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+.metric-card { background-color: transparent; padding: 0; text-align: center; }
+.metric-card h2 { color: var(--primary-color); font-size: 0.8rem; letter-spacing: 1px; margin: 0 0 0.5rem 0; }
+.metric-card p { font-family: 'Orbitron', sans-serif; font-size: 1.5rem; margin: 0; }
+#threats-neutralized { color: var(--alert-color); }
 
-.table-container h3 { font-family: 'Orbitron', sans-serif; color: var(--threat-high-text); }
-
+.table-container { padding: 0; }
 table { width: 100%; border-collapse: collapse; }
-th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid var(--grid-color); font-size: 0.9rem; }
+th, td { padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--grid-color); font-size: 0.8rem; }
 th { color: var(--primary-color); font-weight: bold; }
 
-.threat-high { background-color: var(--threat-high-bg); color: var(--threat-high-text); }
-.threat-medium { background-color: var(--threat-medium-bg); color: var(--threat-medium-text); }
-.threat-low { color: var(--text-color); }
+.threat-high { background-color: rgba(255, 77, 140, 0.2); color: var(--alert-color); }
+.threat-medium { background-color: rgba(255, 215, 0, 0.15); color: #ffd700; }
 
-.accordion-header {
-    background-color: var(--surface-color);
-    color: var(--primary-color);
-    cursor: pointer; padding: 1rem; width: 100%; text-align: left;
-    border: 1px solid var(--grid-color); outline: none; transition: background-color 0.4s;
-    font-family: 'Orbitron', sans-serif;
-}
+.action-button { background: none; color: var(--secondary-color); border: 1px solid var(--secondary-color); border-radius: 4px; cursor: pointer; transition: all 0.3s; }
+.action-button:hover { background-color: var(--secondary-color); color: #000; }
 
-.accordion-header.active, .accordion-header:hover { background-color: #1a2838; }
+.truncate { max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: middle; }
+.causality-link { color: var(--secondary-color); font-weight: bold; cursor: pointer; text-decoration: underline; }
 
-.accordion-content {
-    padding: 0 1rem; background-color: transparent;
-    max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out;
-    border-left: 1px solid var(--grid-color);
-    border-right: 1px solid var(--grid-color);
-}
+@keyframes highlight-flash { 0% { background-color: rgba(0, 255, 255, 0.5); } 100% { background-color: transparent; } }
+.highlight { animation: highlight-flash 1.5s ease-out; }
 
-.action-button {
-    background-color: transparent;
-    color: var(--secondary-color);
-    padding: 5px 10px; border: 1px solid var(--secondary-color);
-    border-radius: 4px; cursor: pointer; transition: all 0.3s ease;
-    text-shadow: 0 0 5px var(--secondary-color);
-}
-.action-button:hover { background-color: var(--secondary-color); color: var(--background-color); text-shadow: none; }
+.details-container { position: relative; }
+.details-trigger { cursor: pointer; color: var(--primary-color); font-style: italic; font-size: 0.9em; }
+.details-tooltip { display: none; position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%); background-color: #1a2838; border: 1px solid var(--primary-color); box-shadow: 0 0 15px rgba(0, 255, 255, 0.3); border-radius: 4px; padding: 0.75rem; width: 350px; z-index: 20; text-align: left; white-space: pre-wrap; font-size: 0.8rem; }
+.details-tooltip pre { margin: 0; font-family: 'Roboto Mono', monospace; }
+.details-container:hover .details-tooltip { display: block; }
 
-.truncate { max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.details-json { font-size: 0.8rem; color: #888; }
-.causality-link { color: var(--secondary-color); font-weight: bold; cursor: pointer; }
+@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }

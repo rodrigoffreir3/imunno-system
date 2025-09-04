@@ -3,60 +3,91 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IMUNNO SYSTEM :: EDR TERMINAL</title>
+    <title>IMUNNO SYSTEM :: C.I.C. (Combat Information Center)</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto+Mono&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1 class="header-title">IMUNNO SYSTEM :: EDR TERMINAL</h1>
-            <div class="status-box">
-                <span id="status-text">CONECTANDO...</span>
-                <div id="status-light" class="status-light status-connecting"></div>
-            </div>
-        </header>
+    <!-- Fundo de Estrelas Animado -->
+    <div id="stars1"></div>
+    <div id="stars2"></div>
+    <div id="stars3"></div>
 
-        <div class="metrics-grid">
-            <div class="metric-card">
-                <h2>EVENTOS TOTAIS (SESSÃO)</h2>
-                <p id="events-today">0</p>
+    <!-- Olho Digital / Scanner Central -->
+    <div id="eye-container">
+        <div id="eye-sclera">
+            <div id="eye-iris">
+                <div id="eye-pupil"></div>
             </div>
-            <div class="metric-card">
-                <h2>AMEAÇAS NEUTRALIZADAS (SESSÃO)</h2>
-                <p id="threats-neutralized" style="color: var(--threat-high-text);">0</p>
-            </div>
-            <div class="metric-card">
-                <h2>ÚLTIMA AMEAÇA DETECTADA</h2>
-                <p id="last-threat" style="font-size: 1rem; color: var(--threat-medium-text);">Nenhuma</p>
+            <div class="scan-line"></div>
+        </div>
+    </div>
+
+    <!-- Container para as janelas flutuantes -->
+    <div id="desktop">
+
+        <!-- Janela de Status e Métricas -->
+        <div class="window" id="window-metrics" style="top: 5%; left: 2%; width: 30%;">
+            <div class="window-header">STATUS & MÉTRICAS</div>
+            <div class="window-content">
+                <div class="status-box">
+                    <span id="status-text">CONECTANDO...</span>
+                    <div id="status-light" class="status-light status-connecting"></div>
+                </div>
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <h2>EVENTOS TOTAIS</h2>
+                        <p id="events-today">0</p>
+                    </div>
+                    <div class="metric-card">
+                        <h2>AMEAÇAS NEUTRALIZADAS</h2>
+                        <p id="threats-neutralized">0</p>
+                    </div>
+                    <div class="metric-card">
+                        <h2>ÚLTIMA AMEAÇA</h2>
+                        <p id="last-threat" style="font-size: 1rem;">Nenhuma</p>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <div class="table-container">
-            <h3>LOG DE AMEAÇAS CRÍTICAS</h3>
-            <table>
-                <thead><tr><th>Timestamp</th><th>Tipo</th><th>Detalhe</th><th>Score</th><th>Ação</th></tr></thead>
-                <tbody id="threats-table-body"></tbody>
-            </table>
-        </div>
-
-        <div class="logs-section">
-            <button class="accordion-header">Log Completo de Eventos de Arquivo</button>
-            <div class="accordion-content">
+        <!-- Janela de Ameaças Críticas -->
+        <div class="window" id="window-threats" style="top: 5%; left: 34%; width: 64%;">
+            <div class="window-header">LOG DE AMEAÇAS CRÍTICAS</div>
+            <div class="window-content table-container">
                 <table>
-                    <thead><tr><th>Timestamp</th><th>Hostname</th><th>Caminho do Arquivo</th><th>Score</th><th>Detalhes</th></tr></thead>
+                    <thead><tr><th>Timestamp</th><th>Tipo</th><th>Detalhe</th><th>Score</th><th>Ação</th></tr></thead>
+                    <tbody id="threats-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Janela de Logs de Arquivos -->
+        <div class="window" id="window-files" style="top: 40%; left: 2%; width: 96%;">
+            <div class="window-header">LOG DE EVENTOS DE ARQUIVO</div>
+            <div class="window-content table-container">
+                <table>
+                    <thead><tr><th>Timestamp</th><th>Hostname</th><th>Caminho</th><th>Score</th><th>Detalhes</th></tr></thead>
                     <tbody id="file-events-body"></tbody>
                 </table>
             </div>
+        </div>
 
-            <button class="accordion-header">Log Completo de Eventos de Processo</button>
-            <div class="accordion-content">
+        <!-- Janela de Logs de Processos -->
+        <div class="window" id="window-processes" style="top: 70%; left: 2%; width: 96%;">
+            <div class="window-header">LOG DE EVENTOS DE PROCESSO</div>
+            <div class="window-content table-container">
                 <table>
                     <thead><tr><th>Timestamp</th><th>Hostname</th><th>PID</th><th>Comando</th><th>Usuário</th><th>Score</th><th>Origem (Hash)</th></tr></thead>
                     <tbody id="process-events-body"></tbody>
                 </table>
             </div>
         </div>
+
     </div>
+
     <script src="script.js"></script>
 </body>
 </html>
