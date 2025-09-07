@@ -3,89 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IMUNNO SYSTEM :: C.I.C. (Combat Information Center)</title>
+    <title>IMUNNO :: C2-TERMINAL</title>
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <!-- Fundo de Estrelas Animado -->
-    <div id="stars1"></div>
-    <div id="stars2"></div>
-    <div id="stars3"></div>
 
-    <!-- Olho Digital / Scanner Central -->
-    <div id="eye-container">
-        <div id="eye-sclera">
-            <div id="eye-iris">
-                <div id="eye-pupil"></div>
+    <div id="terminal-container">
+        <header class="terminal-header">
+            <h1>Imunno System</h1>
+            <div class="status-container">
+                <div id="status-light" class="status-light"></div>
+                <span id="status-text">CONNECTING...</span>
             </div>
-            <div class="scan-line"></div>
-        </div>
-    </div>
+        </header>
 
-    <!-- Container para as janelas flutuantes -->
-    <div id="desktop">
+        <main class="terminal-body">
 
-        <!-- Janela de Status e Métricas -->
-        <div class="window" id="window-metrics" style="top: 5%; left: 2%; width: 30%;">
-            <div class="window-header">STATUS & MÉTRICAS</div>
-            <div class="window-content">
-                <div class="status-box">
-                    <span id="status-text">CONECTANDO...</span>
-                    <div id="status-light" class="status-light status-connecting"></div>
-                </div>
-                <div class="metrics-grid">
-                    <div class="metric-card">
-                        <h2>EVENTOS TOTAIS</h2>
-                        <p id="events-today">0</p>
+            <div id="metrics-pane" class="terminal-pane">
+                <h2>// METRICS</h2>
+                <div class="metrics-content">
+                    <div class="metric-item">
+                        <span class="metric-label">EVENTS_ANALYZED</span>
+                        <span class="metric-value" id="total-events">0</span>
                     </div>
-                    <div class="metric-card">
-                        <h2>AMEAÇAS NEUTRALIZADAS</h2>
-                        <p id="threats-neutralized">0</p>
-                    </div>
-                    <div class="metric-card">
-                        <h2>ÚLTIMA AMEAÇA</h2>
-                        <p id="last-threat" style="font-size: 1rem;">Nenhuma</p>
+                    <div class="metric-item">
+                        <span class="metric-label">THREATS_NEUTRALIZED</span>
+                        <span class="metric-value" id="threats-neutralized">0</span>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Janela de Ameaças Críticas -->
-        <div class="window" id="window-threats" style="top: 5%; left: 34%; width: 64%;">
-            <div class="window-header">LOG DE AMEAÇAS CRÍTICAS</div>
-            <div class="window-content table-container">
-                <table>
-                    <thead><tr><th>Timestamp</th><th>Tipo</th><th>Detalhe</th><th>Score</th><th>Ação</th></tr></thead>
-                    <tbody id="threats-table-body"></tbody>
-                </table>
+            <div id="threats-pane" class="terminal-pane">
+                <h2>// CRITICAL_THREATS_LOG</h2>
+                <div class="table-container" id="threats-table-content">
+                    <!-- Ameaças críticas -->
+                </div>
             </div>
-        </div>
 
-        <!-- Janela de Logs de Arquivos -->
-        <div class="window" id="window-files" style="top: 40%; left: 2%; width: 96%;">
-            <div class="window-header">LOG DE EVENTOS DE ARQUIVO</div>
-            <div class="window-content table-container">
-                <table>
-                    <thead><tr><th>Timestamp</th><th>Hostname</th><th>Caminho</th><th>Score</th><th>Detalhes</th></tr></thead>
-                    <tbody id="file-events-body"></tbody>
-                </table>
+            <div id="events-pane" class="terminal-pane">
+                <h2>// REAL-TIME_EVENT_STREAM</h2>
+                <div class="table-container" id="events-table-content">
+                    <!-- Eventos gerais -->
+                </div>
             </div>
-        </div>
 
-        <!-- Janela de Logs de Processos -->
-        <div class="window" id="window-processes" style="top: 70%; left: 2%; width: 96%;">
-            <div class="window-header">LOG DE EVENTOS DE PROCESSO</div>
-            <div class="window-content table-container">
-                <table>
-                    <thead><tr><th>Timestamp</th><th>Hostname</th><th>PID</th><th>Comando</th><th>Usuário</th><th>Score</th><th>Origem (Hash)</th></tr></thead>
-                    <tbody id="process-events-body"></tbody>
-                </table>
-            </div>
-        </div>
-
+        </main>
     </div>
 
     <script src="script.js"></script>

@@ -39,7 +39,7 @@ func main() {
 	benignContent := "<?php echo \"tudo bem\"; ?>"
 	log.Println("Usando conteúdo de arquivo benigno.")
 
-	agentID := "causality-agent-004"
+	agentID := "docker-agent-001"
 hostname := "webserver-prod-05"
 pid := int32(9877)
 filePath := "/var/www/html/uploads/health_check.php" // Arquivo de aparência inofensiva

@@ -142,13 +142,24 @@ func handleCommand(cmd CommandMessage) {
 		}
 		handleQuarantineCommand(filePath)
 	default:
-		log.Printf("Aviso: Comando desconhecido recebido: %s", cmd.Action)
+		// Ignora silenciosamente qualquer outra ação que não seja um comando explícito para o agente.
+		// Isso evita o spam de logs quando o hub faz broadcast de eventos gerais.
+		return
 	}
 }
 
 // Substitua a sua função handleQuarantineCommand por esta versão final e aprimorada
 
 func handleQuarantineCommand(filePath string) {
+	// --- ALTERAÇÃO: Verificação de existência do arquivo ---
+	// Antes de tentar qualquer coisa, verifica se o arquivo realmente existe.
+	// Isso evita logs de erro em cenários de simulação onde o arquivo não é criado fisicamente.
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		log.Printf("[AVISO] Arquivo de evento simulado não encontrado para quarentena: %s. Ignorando.", filePath)
+		return // Simplesmente para a execução do comando para este caso.
+	}
+	// --- FIM DA ALTERAÇÃO ---
+
 	if err := os.MkdirAll(cfg.Agent.QuarantineDir, 0755); err != nil {
 		log.Printf("!!! ERRO QUARENTENA: Não foi possível criar o diretório de quarentena: %v", err)
 		return
