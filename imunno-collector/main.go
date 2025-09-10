@@ -107,7 +107,7 @@ func fileEventHandler(db *database.Database, h *hub.Hub, mlClient *ml_client.MLC
 				} else {
 					log.Printf("Predição da IA para arquivo: Anomalia=%t, Confiança=%.2f", prediction.IsAnomaly, prediction.Confidence)
 					if prediction.IsAnomaly {
-						log.Printf("IA DETECTOU ANOMALIA no arquivo. Elevando a pontuação de ameaça.")
+						log.Printf("IA confirmou anomalia. Ajustando score para Ameaça Crítica (95).")
 						event.ThreatScore = 95
 					}
 				}
