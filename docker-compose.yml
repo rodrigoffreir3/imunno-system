@@ -7,7 +7,7 @@ services:
     restart: always
     environment:
       POSTGRES_USER: imunno_user
-      POSTGRES_PASSWORD: imunno_pass
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: imunno_db
     ports:
       - "5432:5432"
@@ -48,7 +48,8 @@ services:
         condition: service_started
     environment:
       ENABLE_QUARANTINE: "true"
-      DB_URL: "postgres://imunno_user:imunno_pass@postgres:5432/imunno_db?sslmode=disable"
+      # CORREÇÃO AQUI: Agora a string de conexão puxa a senha do .env
+      DB_URL: "postgres://imunno_user:${DB_PASSWORD}@postgres:5432/imunno_db?sslmode=disable"
       ML_SERVICE_URL: "http://imunno_ml:5000"
     ports:
       - "8080:8080"
