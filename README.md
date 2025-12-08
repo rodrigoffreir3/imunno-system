@@ -115,4 +115,4 @@ O projeto segue um roadmap de evolução para escala massiva e autonomia biológ
 
 ---
 
-© 2025 Imunno System. Todos os direitos reservados.
+© 2025 Imunno System. Todos os direitos reservados. Registered Software INPI Process: 512025006506-0.
