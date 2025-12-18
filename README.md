@@ -2,6 +2,7 @@
 
 ![Status](https://img.shields.io/badge/Status-MVP%20Validated-success) ![Version](https://img.shields.io/badge/Version-1.0.0-blue) ![Architecture](https://img.shields.io/badge/Architecture-Microservices-orange)
 
+> ***"Registered Software INPI Process: 512025006506-0."***
 > **"O sistema imunológico para a web."**
 > Segurança adaptativa focada em neutralizar ameaças *Zero-Day* através de Análise de Causalidade e Inteligência Artificial Contextual.
 
