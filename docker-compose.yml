@@ -1,4 +1,4 @@
-# Arquivo: docker-compose.yml - Versão Final e Corrigida
+version: '3.8'
 
 services:
   postgres:
@@ -12,9 +12,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      # Volume nomeado para os dados do banco, para persistência.
       - pgdata:/var/lib/postgresql/data
-      # Mapeia o diretório inteiro para executar todos os scripts .sql na inicialização.
       - ./postgres-init:/docker-entrypoint-initdb.d
     networks:
       - imunno-net
@@ -43,12 +41,11 @@ services:
     restart: always
     depends_on:
       postgres:
-        condition: service_healthy # Garante que o collector espere o DB estar 100% pronto.
+        condition: service_healthy
       imunno_ml:
         condition: service_started
     environment:
       ENABLE_QUARANTINE: "true"
-      # CORREÇÃO AQUI: Agora a string de conexão puxa a senha do .env
       DB_URL: "postgres://imunno_user:${DB_PASSWORD}@postgres:5432/imunno_db?sslmode=disable"
       ML_SERVICE_URL: "http://imunno_ml:5000"
     ports:
@@ -89,49 +86,12 @@ services:
     networks:
       - imunno-net
   
-  # --- Seção de Ferramentas (Simuladores e Jupyter) ---
-  imunno_simulador:
-    build:
-      context: ./tools/simulador-malicioso
-    container_name: imunno_simulador
-    profiles:
-      - tools
-    depends_on:
-      - imunno_collector
-    environment:
-      COLLECTOR_URL: "http://imunno_collector:8080"
-    networks:
-      - imunno-net
-
-  imunno_simulador_bem:
-    build:
-      context: ./tools/simulador-bem
-    container_name: imunno_simulador_bem
-    profiles:
-      - tools
-    depends_on:
-      - imunno_collector
-    environment:
-      COLLECTOR_URL: "http://imunno_collector:8080"
-    networks:
-      - imunno-net
-
-  imunno_simulador_causalidade:
-    build:
-      context: ./tools/simulador-causalidade
-    container_name: imunno_simulador_causalidade
-    profiles:
-      - tools
-    depends_on:
-      - imunno_collector
-    environment:
-      COLLECTOR_URL: "http://imunno_collector:8080"
-    networks:
-      - imunno-net
+  # --- Ferramentas e Jupyter (Só iniciam se você pedir explicitamente) ---
   
   jupyter:
     image: jupyter/scipy-notebook:latest
     container_name: imunno_jupyter
+    profiles: ["debug"] # <--- ISSO impede ele de iniciar sozinho
     ports:
       - "8888:8888"
     volumes:
@@ -141,12 +101,10 @@ services:
     environment:
       JUPYTER_ENABLE_LAB: "yes"
 
-# Define os volumes nomeados que serão gerenciados pelo Docker.
 volumes:
   pgdata:
   uploads_volume:
 
-# Define a rede customizada para a comunicação entre os serviços.
 networks:
   imunno-net:
     driver: bridge
